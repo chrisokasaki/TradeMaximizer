@@ -1,0 +1,410 @@
+<html>
+<head>
+<title>TradeMaximizer Instructions</title>
+</head>
+<body>
+<h1>TradeMaximizer</h1>
+
+<p>
+Version 1.1: 25 August 2007 <br>
+Created by Chris Okasaki (cokasaki)
+
+<h2>Contents</h2>
+
+<ul>
+<li> <a href="#requirements">System Requirements</a>
+<li> <a href="#intro">Introduction to TradeMaximizer</a>
+<li> <a href="#example">A Small Example</a>
+<li> <a href="#running">Running TradeMaximizer</a>
+<li> <a href="#wantlists">Want List Basics</a>
+<li> <a href="#priorities">Prioritizing Trades</a>
+<li> <a href="#duplicates">Protection from Duplicate Items</a>
+<li> <a href="#options">Controlling TradeMaximizer with Options</a>
+<li> <a href="#license">License</a>
+</ul>
+
+<h2><a name="requirements"/>System Requirements</h2>
+
+<p>
+TradeMaximizer is implemented in Java, and should run on any machine
+with a recent Java Runtime Environment.  It has been tested using Java
+SE Runtime Environment Version 6.
+
+<h2><a name="about"/>Introduction to TradeMaximizer</h2>
+
+<p>
+TradeMaximizer supports multi-party trades in which each party offers
+up items for trade, and selects items that they wish to receive. The
+system then finds the largest set of items that can be traded
+simultaneously.
+
+<p>
+In general, the trades found by TradeMaximizer are not two-party
+swaps, where A receives an item from B, and B receives an item from A.
+Instead, trades will usually be composed of one or more larger cycles,
+in which each person sends an item to the previous person in the
+cycle and receives an item from the next person in the cycle.
+
+<p>
+The way such trades are usually run is as follows:
+<ul>
+<li> One person (the <i>moderator</i>) announces the trade, and decides on
+basic details such as the schedule.
+<li> Participants submit information on the items they wish to offer
+for trade.
+<li> At some point, the trade closes to new entries, and the moderator publishes an official list of item names.
+<li> Partipants review the offered items, and construct <a href="#wantlists">want lists</a> that state, for each item, which items they would like to receive in return.
+<li> The moderator collects all the want lists into a file, and runs
+TradeMaximizer (or other trade finding software) to find a valid set of trade cycles.
+
+<li> The moderator publishes the trade cycles, and each participant
+sends their item to the previous person in the trade.  (Usually,
+trades will not be found for some of the items, in which case those
+participants simply keep their items.)
+</ul>
+
+<p>
+This style of trade was developed and popularized on <a
+href="http://www.boardgamegeek.com">BoardGameGeek</a>, where they are
+known as &ldquo;Math Trades&rdquo; and where the items being
+traded are typically board games and card games.  However, the idea
+can be used for any kinds of items.
+
+<p>
+TradeMaximizer improves on previous software for running such trades
+in two ways:
+<ol>
+<li> TradeMaximizer is guaranteed to find the maximum possible number of trades.  (Previous
+software usually found smaller numbers of trades.)
+<li> TradeMaximizer runs very quickly, finding results in mere seconds
+for trades involving over 1000 items.  (Previous software usually ran
+for hours or days or longer.)
+</ol>
+
+<h2><a name="example"/>A Small Example</h2>
+
+Here's an example of a very small trade involving six items.  The
+moderator has decided to use the numbers 1-6 as the official item
+names, and the participants have submitted the following <a href="#wantlists">want lists</a>:
+<pre>
+  (Alice) 1 : 3 2 6
+  (Betty) 2 : 1 6 4 3
+  (Craig) 3 : 6 2
+  (David) 4 : 2
+  (Ethan) 5 : 1 2 3 4 6
+  (Fiona) 6 : 1 2
+</pre>
+The first want list states that user Alice is offering item 1 and wants one of items 3, 2, or 6 in return.  The other want lists read similarly.
+
+<p>
+The moderator runs TradeMaximizer, which finds the following five trades:
+<pre>
+  (ALICE) 1 receives (CRAIG) 3
+  (CRAIG) 3 receives (FIONA) 6
+  (FIONA) 6 receives (ALICE) 1
+
+  (BETTY) 2 receives (DAVID) 4
+  (DAVID) 4 receives (BETTY) 2
+</pre>
+Notice that Ethan's item 5 did not trade.
+
+<h2><a name="running"/>Running TradeMaximizer</h2>
+
+<p>
+TradeMaximizer is designed to be run from the command line, rather
+than using a graphical interface.
+
+<p>
+TradeMaximizer is run using the command
+<pre>
+    java -jar tm.jar &lt; <i>wantlistfile</i>
+</pre>
+For example, if the want lists are saved in a file
+<tt>wants.txt</tt>, then you would say
+<pre>
+    java -jar tm.jar &lt; wants.txt
+</pre>
+
+<p>
+By default, the results are printed to the console.  If you want to
+save the results to a file instead, use the command
+<pre>
+    java -jar tm.jar &lt; <i>wantlistfile</i> &gt; <i>resultsfile</i>
+</pre>
+as in
+<pre>
+    java -jar tm.jar &lt; wants.txt &gt; results.txt
+</pre>
+
+<p>
+For Windows users, there is a simple batch file that allows you to run
+TradeMaximizer with the command
+<pre>
+    tm wants
+</pre>
+or
+<pre>
+    tm wants &gt; results.txt
+</pre>
+where the want lists are in the file <tt>wants.txt</tt>.
+
+<h2><a name="wantlists">Want List Basics</h2>
+
+<p>
+Each want list is written on a single (possibly very long) line.
+A typical want list is written as a list of item names separated by spaces,
+with a colon after the first item.
+<pre>
+  <i>item0</i> : <i>item1</i> <i>item2</i> ... <i>itemN</i> 
+</pre>
+Such a list means that the owner of <tt><i>item0</i></tt> wants any
+one of the items
+<tt><i>item1</i></tt> through <tt><i>itemN</i></tt>.
+
+<p>
+Note that a want list can be empty, as in
+<pre>
+   123-OTHE :
+</pre>
+which means that the owner of <tt>123-OTH</tt> no longer wants to
+trade the item.
+
+<p>
+Technically, the colon is optional (unless the moderator chooses the
+REQUIRE-COLONS option), but it is a good idea to include the colon as
+insurance against certain kinds of errors.
+
+<p>
+Individual item names are combinations of digits, letters, and dashes,
+such as <tt>78</tt> or <tt>MANCALA</tt> or <tt>78-MANCALA</tt>.  By
+default, TradeMaximizer is case insensitive, so <tt>MANCALA</tt>,
+<tt>Mancala</tt>, and <tt>mancala</tt> would all refer to the same
+item.
+
+<p>
+A username can be included at the beginning of the want list by
+enclosing it in parentheses, as in
+<pre>
+  (John Doe) 123-OTHE : 078-MANC 456-CHES
+</pre>
+The username is optional (unless the moderator chooses the
+REQUIRE-USERNAMES), but it makes the output more readable and
+also protects against certain kinds of errors.
+
+<h2><a name="priorities"/>Prioritizing Trades</h2>
+
+<p>
+By default, TradeMaximizer does not use priorities. The moderator can
+choose to use priorities by specifying a priority scheme as an option
+(eg, LINEAR-PRIORITIES).  Priorities allow a user to express a
+preference for one item over another, even though both might be acceptable.
+
+<p>
+When using priorities, each wanted item in a want list is assigned a
+certain cost, where lower cost means higher priority. The system then
+uses cost as a tie-breaker among different ways of achieving the
+maximum number of trades. In particular, it finds the set of trades
+that has the minimum total cost, where total cost is the sum of the
+costs of all the individual items traded.
+
+<p>
+All priority schemes begin by finding the rank of each wanted item in
+a want list. The cost is then calculated as a function of rank.
+<ul>
+<li> In LINEAR-PRIORITIES, cost = rank. 
+<li> In TRIANGLE-PRIORITIES, cost = 1+2+...+rank = rank*(rank+1)/2.
+<li> In SQUARE-PRIORITIES, cost = rank*rank.
+</ul>
+In the simplest case, rank is equal to the position of the item in the
+list. In other words, the first wanted item has rank 1, the second
+wanted item has rank 2, and so on.
+
+<p>
+The simple case can be altered in two ways. First, the moderator can
+set the SMALL-STEP=<i>num</i> option. This sets how much the rank increases
+when you move from one position to the next. By default, the
+small-step value is 1, and it shoud be rare to want any small-step
+value except 1 or 0.
+
+<p>
+Second, the user can include a semicolon in a want list. A semicolon
+says "increase the rank of the next item by the big-step value". (The
+big-step value is 9 by default, but can be set by the moderator using
+the BIG-STEP=<i>num</i> option.)
+
+<p>
+For example, in the want list
+<pre>
+  A : B C ; D
+</pre>
+item B has rank 1, item C has rank 2, and item D has rank 12, assuming
+the small-step value is 1 and the big-step value is 9. Notice that the
+gap in rank between items C and D is the small-step value plus the
+big-step value, not just the big-step value. If the small-step and
+big-step values were 0 and 100, respectively, then item B would still
+have rank 1, but item C would also have rank 1 and item D would have rank 101.
+
+<p>
+Multiple semicolons in a row are allowed, as are semicolons before the
+first wanted item.
+
+<h2><a name="duplicates"/>Protection from Duplicate Items</h2>
+
+<p>
+It is common for more than one user to offer the same item for trade,
+and it is also common for a single user to offer more than one item.
+This raises the possibility of receiving more than one copy of an
+item, when you really only wanted one.
+
+<p>
+For example, suppose you are involved in a trade of classic rock CDs,
+and three people have offered Pink Floyd's <i>Dark Side of the
+Moon</i>, which you would like to acquire.  If you have offered a
+single item, say Traffic's <i>Low Spark of High Heeled Boys</i>, then
+you can safely put all the copies of the Pink Floyd CD on your want
+list, as in
+<pre>
+   123-LOW : 292-DARK 478-DARK 101-DARK 305-WHIT
+</pre>
+However, if you are also offering Cream's <i>Disraeli Gears</i>, then
+you might not want to say
+<pre>
+   123-LOW  : 292-DARK 478-DARK 101-DARK 305-WHIT
+   124-DISR : 292-DARK 478-DARK 101-DARK 305-WHIT
+</pre>
+because you could end up with two copies of <i>Dark Side of the
+Moon</i>, perhaps receiving 292-DARK for 123-LOW and 101-DARK for
+124-DISR.  It some situations, this would be okay, but in other
+situations, you would vastly prefer not to get multiple copies of
+equivalent items.
+
+<p>
+In TradeMaximizer, you can protect against getting duplicates by
+using <i>dummy items</i>, as follows:
+
+<ol>
+<li> Add usernames to all of your want lists (if you haven't already).
+<pre>
+   (musicfiend) 123-LOW  : 292-DARK 478-DARK 101-DARK 305-WHIT
+   (musicfiend) 124-DISR : 292-DARK 478-DARK 101-DARK 305-WHIT
+</pre>
+
+<li> Create a dummy item, named &ldquo;%something&rdquo;, and add the
+set of duplicate items to the want list of the dummy item.
+<pre>
+   (musicfiend) %PINK : 292-DARK 478-DARK 101-DARK
+</pre>
+
+<li> Now remove the duplicate items from your regular want lists, and
+add the dummy item instead.
+<pre>
+   (musicfiend) 123-LOW  : %PINK 305-WHIT
+   (musicfiend) 124-DISR : %PINK 305-WHIT
+</pre>
+Now at most one of your regular items can &ldquo;win&rdquo; the dummy
+item, and the dummy item can win at most one of the duplicate items,
+so you will receive at most one of the duplicates.
+</ol>
+
+<p>
+Some things to note about dummy items:
+<ul>
+<li> Dummy items can only be used if the trade moderator has selected the ALLOW-DUMMIES option. 
+<li> You must include a username tag in any want list that involves dummy items. 
+<li> You can create as many dummy items as you want. 
+<li> You cannot refer to anyone else's dummy items, nor can they refer
+to yours. (In fact, different users can have dummy items with the same
+name, without confusion.)
+<li> You can refer to one of your dummy items in the want list of another dummy item. 
+<li> Dummy items are not included in the trade count, so they do not artificially inflate the number of trades. 
+<li> In a trade with priorities, keep in mind that priorities are ignored in the want list for a dummy item. However, the priority of the dummy item in the want list for one of your regular items is handled normally. 
+<li> Dummy items are elided from the trade output. For example, if
+123-LOW received %PINK and %PINK received 292-DARK, then the output
+would say that 123-LOW received 292-DARK. 
+</ul>
+
+<h2><a name="options"/>Controlling TradeMaximizer with Options</h2>
+
+<p>
+TradeMaximizer has numerous options that can be used to configure its
+behavior.  Options are written inside the want list file itself,
+rather than using command-line switches, so that other parties can
+verify the trade using exactly the same options.
+
+<p>
+Options are written at the top of the file, on one or more lines
+beginning with the characters &ldquo;#!&rdquo;.  (Note that lines
+beginning with just &ldquo;#&rdquo; are comments.)  For example, the
+following line declares two options, ALLOW-DUMMIES and REQUIRE-COLONS.
+<pre>
+  #! ALLOW-DUMMIES REQUIRE-COLONS
+</pre>
+
+<p>
+Here are the options supported by TradeMaximizer:
+<ul>
+<li> <tt>LINEAR-PRIORITIES</tt>: Use the 1,2,3,4,... priority scheme. 
+<li> <tt>TRIANGLE-PRIORITIES</tt>: Use the 1,3,6,10,... priority scheme. 
+<li> <tt>SQUARE-PRIORITIES</tt>: Use the 1,4,9,16,... priority scheme. 
+<li> <tt>SMALL-STEP=<i>num</i></tt>: Adjust how priorities change
+between successive entries in a want list.  (The default value is 1.)
+<li> <tt>BIG-STEP=<i>num</i></tt>: Adjust how priorities change for
+each semicolon in a want list.  (The default value is 9.)
+
+<p>
+<li><tt>ALLOW-DUMMIES</tt>: Allow users to include dummy items to protect against getting duplicates.
+<p>
+<li> <tt>REQUIRE-COLONS</tt>: Make colons mandatory for every want list. 
+<li> <tt>REQUIRE-USERNAMES</tt>: Make usernames mandatory for every
+want list.
+<p>
+<li> <tt>HIDE-LOOPS</tt>: Do not output the trade loops. 
+<li> <tt>HIDE-SUMMARY</tt>: Do not output the item summary. 
+<li> <tt>HIDE-NONTRADES</tt>: Do not include items that did not trade in the item summary. 
+<li> <tt>HIDE-ERRORS</tt>: Do not output error messages (except for fatal errors). 
+<li> <tt>HIDE-REPEATS</tt>: Do not output error messages when a want list includes the same item more than once. 
+<li> <tt>HIDE-STATS</tt>: Do not output the result statistics (other
+than the number of trades). 
+<p>
+<li> <tt>SORT-BY-ITEM</tt>: Sort the item summary by item, instead of by username. 
+<li> <tt>CASE-SENSITIVE</tt>: Treat item names as case-sensitive
+instead of converting all lowercase letters to uppercase. 
+<p>
+<li> <tt>NONTRADE-COST=<i>num</i></tt>: Adjust the cost of not trading
+an item from its default value of 1 billion to <tt><i>num</i></tt>. The net effect is
+to forbid trade loops whose average cost per item exceeds <tt><i>num</i></tt>. Note
+that this means that you can end up with less than the maximum number
+of trades. 
+</ul>
+
+<h2><a name="license"/>License</h2>
+
+<p>
+The MIT License
+
+<p>
+Copyright (c) 2007 Chris Okasaki
+
+<p>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+<p>
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+<p>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+</body>
+</html>

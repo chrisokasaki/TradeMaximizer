@@ -1,6 +1,6 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki (cokasaki)
-// Version 1.0 (15 August 2007): initial release
+// Version 1.1: 29 August 2007
 
 import java.io.*;
 import java.util.*;
@@ -8,89 +8,288 @@ import java.util.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
   
-  final String version = "Version 1.0: 15 August 2007";
+  final String version = "Version 1.1: 29 August 2007";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
-    System.out.println();
     
     List< String[] > wantLists = readWantLists();
     if (wantLists == null) return;
+    if (options.size() > 0) {
+      System.out.print("Options:");
+      for (String option : options) System.out.print(" "+option);
+      System.out.println();
+    }
+    System.out.println();
 
     buildGraph(wantLists);
-    if (errors.size() > 0) {
+    if (showErrors && errors.size() > 0) {
       Collections.sort(errors);
       System.out.println("ERRORS:");
-      for (String err : errors) System.out.println(err);
+      for (String error : errors) System.out.println(error);
       System.out.println();
     }
 
+    long startTime = System.currentTimeMillis();
     findMatches();
+    long stopTime = System.currentTimeMillis();
     displayMatches();
+
+    if (showElapsedTime)
+      System.out.println("Elapsed time = " + (stopTime-startTime) + "ms");
   }
 
+  boolean caseSensitive = false;
+  boolean requireColons = false;
+  boolean requireUsernames = false;
+  boolean showErrors = true;
+  boolean showRepeats = true;
+  boolean showLoops = true;
+  boolean showSummary = true;
+  boolean showNonTrades = true;
+  boolean showStats = true;
+  boolean sortByItem = false;
+  boolean allowDummies = false;
+  boolean showElapsedTime = false;
+
+  static final int NO_PRIORITIES = 0;
+  static final int LINEAR_PRIORITIES = 1;
+  static final int TRIANGLE_PRIORITIES = 2;
+  static final int SQUARE_PRIORITIES = 3;
+
+  int priorityScheme = NO_PRIORITIES;
+  int smallStep = 1;
+  int bigStep = 9;
+  long nonTradeCost = 1000000000L; // 1 billion
+  
   //////////////////////////////////////////////////////////////////////
+  
+  List< String > options = new ArrayList< String >();
   
   List< String[] > readWantLists() {
     try {
       BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
       List< String[] > wantLists = new ArrayList< String[] >();
-    
-      for (;;) {
+
+      for (int lineNumber = 1;;lineNumber++) {
         String line = in.readLine();
         if (line == null) return wantLists;
-        if (line.matches("\\s*(#.*)?")) continue; // blank line or comment line
+
+        line = line.trim();
+        if (line.length() == 0) continue; // skip blank link
+        if (line.matches("#!.*")) { // declare options
+          if (wantLists.size() > 0)
+            fatalError("Options (#!...) cannot be declared after first real want list", lineNumber);
+          for (String option : line.toUpperCase().substring(2).trim().split("\\s+")) {
+            if (option.equals("CASE-SENSITIVE"))
+              caseSensitive = true;
+            else if (option.equals("REQUIRE-COLONS"))
+              requireColons = true;
+            else if (option.equals("REQUIRE-USERNAMES"))
+              requireUsernames = true;
+            else if (option.equals("HIDE-ERRORS"))
+              showErrors = false;
+            else if (option.equals("HIDE-REPEATS"))
+              showRepeats = false;
+            else if (option.equals("HIDE-LOOPS"))
+              showLoops = false;
+            else if (option.equals("HIDE-SUMMARY"))
+              showSummary = false;
+            else if (option.equals("HIDE-NONTRADES"))
+              showNonTrades = false;
+            else if (option.equals("HIDE-STATS"))
+              showStats = false;
+            else if (option.equals("SORT-BY-ITEM"))
+              sortByItem = true;
+            else if (option.equals("ALLOW-DUMMIES"))
+              allowDummies = true;
+            else if (option.equals("SHOW-ELAPSED-TIME"))
+              showElapsedTime = true;
+            else if (option.equals("LINEAR-PRIORITIES"))
+              priorityScheme = LINEAR_PRIORITIES;
+            else if (option.equals("TRIANGLE-PRIORITIES"))
+              priorityScheme = TRIANGLE_PRIORITIES;
+            else if (option.equals("SQUARE-PRIORITIES"))
+              priorityScheme = SQUARE_PRIORITIES;
+            else if (option.startsWith("SMALL-STEP=")) {
+              String num = option.substring(11);
+              if (!num.matches("\\d+"))
+                fatalError("SMALL-STEP argument must be a non-negative integer",lineNumber);
+              smallStep = Integer.parseInt(num);
+            }
+            else if (option.startsWith("BIG-STEP=")) {
+              String num = option.substring(9);
+              if (!num.matches("\\d+"))
+                fatalError("BIG-STEP argument must be a non-negative integer",lineNumber);
+              bigStep = Integer.parseInt(num);
+            }
+            else if (option.startsWith("NONTRADE-COST=")) {
+              String num = option.substring(14);
+              if (!num.matches("[1-9]\\d*"))
+                fatalError("NONTRADE-COST argument must be a positive integer",lineNumber);
+              nonTradeCost = Long.parseLong(num);
+            }
+            else
+              fatalError("Unknown option \""+option+"\"",lineNumber);
+
+            options.add(option);
+          }
+          continue;
+        }
+        if (line.matches("#.*")) continue; // skip comment line
+        if (line.indexOf("#") != -1)
+          fatalError("Comments (#...) cannot be used after beginning of line",lineNumber);
+
+        // check parens for user name
+        if (line.indexOf("(") == -1 && requireUsernames)
+          fatalError("Missing username with REQUIRE-USERNAMES selected",lineNumber);
+        if (line.charAt(0) == '(') {
+          if (line.lastIndexOf("(") > 0)
+            fatalError("Cannot have more than one '(' per line",lineNumber);
+          int close = line.indexOf(")");
+          if (close == -1)
+            fatalError("Missing ')' in username",lineNumber);
+          if (close == line.length()-1)
+            fatalError("Username cannot appear on a line by itself",lineNumber);
+          if (line.lastIndexOf(")") > close)
+            fatalError("Cannot have more than one ')' per line",lineNumber);
+          if (close == 1)
+            fatalError("Cannot have empty parentheses",lineNumber);
+
+          // temporarily replace spaces in username with #'s
+          if (line.indexOf(" ") < close) {
+            line = line.substring(0,close+1).replaceAll(" ","#")+" "
+                    + line.substring(close+1);
+          }
+        }
+        else if (line.indexOf("(") > 0)
+          fatalError("Username can only be used at the front of a want list",lineNumber);
+        else if (line.indexOf(")") > 0)
+          fatalError("Bad ')' on a line that does not have a '('",lineNumber);
+
+          
+        // check semicolons
+        line = line.replaceAll(";"," ; ");
+        int semiPos = line.indexOf(";");
+        if (semiPos != -1) {
+          if (semiPos < line.indexOf(":"))
+            fatalError("Semicolon cannot appear before colon",lineNumber);
+          String before = line.substring(0,semiPos).trim();
+          if (before.length() == 0 || before.charAt(before.length()-1) == ')')
+            fatalError("Semicolon cannot appear before first item on line", lineNumber);
+        }
+        
+        // check and remove colon
+        int colonPos = line.indexOf(":");
+        if (colonPos != -1) {
+          if (line.lastIndexOf(":") != colonPos)
+            fatalError("Cannot have more that one colon on a line",lineNumber);
+          String header = line.substring(0,colonPos).trim();
+          if (!header.matches("(.*\\)\\s+)?[^(\\s)]\\S*"))
+            fatalError("Must have exactly one item before a colon (:)",lineNumber);
+          line = line.replaceFirst(":"," "); // remove colon
+        }
+        else if (requireColons) {
+          fatalError("Missing colon with REQUIRE-COLONS selected",lineNumber);
+        }
+
+        if (!caseSensitive) line = line.toUpperCase();
         wantLists.add(line.trim().split("\\s+"));
       }
     }
     catch(Exception e) {
-      System.out.println("Error reading want lists: " + e.getMessage());
-      System.exit(1);
+      fatalError(e.getMessage());
       return null;
     }
   }
 
+  void fatalError(String msg) {
+    System.out.println();
+    System.out.println("FATAL ERROR: " + msg);
+    System.exit(1);
+  }
+  void fatalError(String msg,int lineNumber) {
+    fatalError(msg + " (line " + lineNumber + ")");
+  }
+  
   //////////////////////////////////////////////////////////////////////
 
   List< String > errors = new ArrayList< String >();
 
-  final long INFINITY = 1000000000000L;
-  final long NOTRADE  = 1000000L;
+  final long INFINITY = 100000000000000L; // 10^14
+  // final long NOTRADE  = 1000000000L; // replaced by nonTradeCost
   final long UNIT     = 1L;
 
-  int ITEMS; // the number of items being traded
-  String[] names;
+  List< String > names;
+  List< String > users;
+  List< Long > cheapestWantCost;
+  List< Boolean > dummy;
+  
+  int ITEMS; // the number of items being traded (including dummy items)
+  int DUMMY_ITEMS; // the number of dummy items
   int[][] wants; // wants[i][j] is the jth item wanted by item i
   long[][] wantCost;
-  long[] cheapestWantCost;
 
   void buildGraph(List< String[] > wantLists) {
   
-    ArrayList< String > nameList = new ArrayList< String >();
+    users = new ArrayList< String >();
+    names = new ArrayList< String >();
+    cheapestWantCost = new ArrayList< Long >();
+    dummy = new ArrayList< Boolean >();
+    
     HashMap< String,Integer > nameMap = new HashMap< String,Integer >();
+    HashMap< String,Integer > unknowns = new HashMap< String,Integer >();
     
     ArrayList< ArrayList< Integer > > wants = new ArrayList< ArrayList< Integer > >();
     ArrayList< ArrayList< Long > > wantCost = new ArrayList< ArrayList< Long > >();
-    ArrayList< Long > cheapestWantCost = new ArrayList< Long >();
 
     // create the nodes
     for (int i = 0; i < wantLists.size(); i++) {
       String[] list = wantLists.get(i);
       assert list.length > 0;
       String name = list[0];
+      String user = null;
+      int offset = 0;
+      if (name.charAt(0) == '(') {
+        user = name.replaceAll("#"," "); // restore spaces in username
+        // remove username from list
+        list = Arrays.copyOfRange(list,1,list.length);
+        wantLists.set(i,list);
+        assert list.length > 1;
+        name = list[0];
+      }
+      boolean isDummy = (name.charAt(0) == '%');
+      if (isDummy) {
+        if (user == null)
+          errors.add("**** Dummy item " + name + " declared without a username.");
+        else if (!allowDummies)
+          errors.add("**** Dummy items not allowed. ("+name+")");
+        else {
+          name += " for user " + user;
+          list[0] = name;
+        }
+      }
       if (nameMap.containsKey(name)) {
         errors.add("**** Item " + name + " has multiple want lists--ignoring all but first.  (Sometimes the result of an accidental line break in the middle of a want list.)");
         wantLists.set(i, null);
       }
       else {
         int node = ITEMS++;
+        if (isDummy) DUMMY_ITEMS++;
         nameMap.put(name,node);
-        nameList.add(name);
-        cheapestWantCost.add(NOTRADE);
+
+        if (user != null && !isDummy) { // add user name to display name
+          name = sortByItem ? name + " " + user
+                            : user + " " + name;
+        }
+        names.add(name);
+        users.add(user);
+        dummy.add(isDummy);
+        cheapestWantCost.add(nonTradeCost);
         wants.add(new ArrayList< Integer >());
         wantCost.add(new ArrayList< Long >());
 
-        width = Math.max(width, name.length());
+        if (!isDummy) width = Math.max(width, name.length());
       }
     }
 
@@ -102,37 +301,71 @@ public class TradeMaximizer {
 
       // add the "no-trade" edge to itself
       wants.get(fromNode).add(fromNode);
-      wantCost.get(fromNode).add(NOTRADE);
+      wantCost.get(fromNode).add(nonTradeCost);
 
+      long position = 1;
       for (int i = 1; i < list.length; i++) {
         String toName = list[i];
+        if (toName.equals(";")) {
+          position += bigStep;
+          continue;
+        }
+        if (toName.charAt(0) == '%') {
+          if (users.get(fromNode) == null) {
+            errors.add("**** Dummy item " + toName + " used in want list for item " + fromName + ", which does not have a username.");
+            continue;
+          }
+
+          toName += " for user " + users.get(fromNode); 
+        }
         int toNode = nameMap.containsKey(toName) ? nameMap.get(toName) : -1;
         if (toNode == -1) {
-          errors.add("**** Unknown item " + toName + " appears in want list for " + fromName + ".  (" + toName + " might be misspelled or its want list might be missing.)");
+          int occurrences = unknowns.containsKey(toName) ? unknowns.get(toName) : 0;
+          unknowns.put(toName,occurrences + 1);
         }
         else if (fromNode == toNode) {
           errors.add("**** Item " + toName + " appears in its own want list.");
         }
         else if (wants.get(fromNode).indexOf(toNode) != -1) {
-          errors.add("**** Item " + toName + " appears twice in want list for " + fromName + ".");
+          if (showRepeats)
+            errors.add("**** Item " + toName + " is repeated in want list for " + fromName + ".");
+        }
+        else if (users.get(fromNode) != null &&
+                 users.get(toNode) != null &&
+                 users.get(fromNode).equals(users.get(toNode)) &&
+                 !dummy.get(toNode)) {
+          errors.add("**** Item "+names.get(fromNode)+" contains item "+names.get(toNode)+" from the same user ("+users.get(fromNode)+")");
         }
         else {
           wants.get(fromNode).add(toNode);
-          wantCost.get(fromNode).add(UNIT);
-          cheapestWantCost.set(toNode,UNIT);
+          long cost = UNIT;
+          switch (priorityScheme) {
+            case LINEAR_PRIORITIES:   cost = position; break;
+            case TRIANGLE_PRIORITIES: cost = position*(position+1)/2; break;
+            case SQUARE_PRIORITIES:   cost = position*position; break;
+          }
+
+          // all edges out of a dummy node have the same cost
+          if (dummy.get(fromNode)) cost = nonTradeCost;
+          
+          wantCost.get(fromNode).add(cost);
+          cheapestWantCost.set(toNode,Math.min(cost,cheapestWantCost.get(toNode)));
+          position += smallStep;
         }
       }
     }
 
-    this.names = new String[ITEMS];
+    for (Map.Entry< String,Integer > entry : unknowns.entrySet()) {
+      String item = entry.getKey();
+      int occurrences = entry.getValue();
+      String plural = occurrences == 1 ? "" : "s";
+      errors.add("**** Unknown item " + item + " (" + occurrences + " occurrence" + plural + ")");
+    }
+
     this.wants = new int[ITEMS][];
     this.wantCost = new long[ITEMS][];
-    this.cheapestWantCost = new long[ITEMS];
 
     for (int i = 0; i < ITEMS; i++) {
-      this.names[i] = nameList.get(i);
-      this.cheapestWantCost[i] = cheapestWantCost.get(i).longValue();
-      
       this.wants[i] = new int[wants.get(i).size()];
       this.wantCost[i] = new long[wantCost.get(i).size()];
       for (int j = 0; j < wants.get(i).size(); j++) {
@@ -147,7 +380,7 @@ public class TradeMaximizer {
   int NONE = -1;
   int[] match;
   long[] price;
-  Heap[] heap;
+  Heap.Entry[] heapEntry;
   int[] from;
 
   int sinkFrom;
@@ -155,30 +388,30 @@ public class TradeMaximizer {
   long[] matchCost;
 
   void dijkstra() {
-    clearHeap();
-    Arrays.fill(heap,null);
     Arrays.fill(from,NONE);
+
     sinkFrom = NONE;
     sinkCost = INFINITY;
-
+    
+    Heap heap = new Heap();
     for (int i = ITEMS; i < 2*ITEMS; i++)
-      heap[i] = insert(i,INFINITY);
+      heapEntry[i] = heap.insert(i,INFINITY);
     for (int i = 0; i < ITEMS; i++)
-      heap[i] = insert(i, (match[i] == NONE) ? 0 : INFINITY);
+      heapEntry[i] = heap.insert(i, (match[i] == NONE) ? 0 : INFINITY);
 
-    while (!isEmpty()) {
-      Heap h = extractMin();
-      int id = h.id;
-      long cost = h.cost;
+    while (!heap.isEmpty()) {
+      Heap.Entry minEntry = heap.extractMin();
+      int id = minEntry.id();
+      long cost = minEntry.cost();
       if (cost == INFINITY) break; // everything left is unreachable
       if (id < ITEMS) {
         for (int j = 0; j < wants[id].length; j++) {
           int other = wants[id][j] + ITEMS;
           if (other == match[id]) continue;
           long c = price[id] + wantCost[id][j] - price[other];
-          if (cost + c < heap[other].cost) {
+          if (cost + c < heapEntry[other].cost()) {
             from[other] = id;
-            decreaseCost(heap[other],cost + c);
+            heapEntry[other].decreaseCost(cost + c);
           }
         }
       }
@@ -193,9 +426,9 @@ public class TradeMaximizer {
         int other = match[id];
         long c = price[id] - matchCost[other] - price[other];
         assert c >= 0;
-        if (cost + c < heap[other].cost) {
+        if (cost + c < heapEntry[other].cost()) {
           from[other] = id;
-          decreaseCost(heap[other],cost + c);
+          heapEntry[other].decreaseCost(cost + c);
         }
       }
     }
@@ -205,14 +438,14 @@ public class TradeMaximizer {
     int V = 2*ITEMS;
     match = new int[V];
     price = new long[V];
-    heap  = new Heap[V];
+    heapEntry  = new Heap.Entry[V];
     from = new int[V];
     matchCost = new long[ITEMS];
     
     Arrays.fill(match,NONE);
-    for (int i = 0; i < ITEMS; i++) price[i+ITEMS] = cheapestWantCost[i];
+    for (int i = 0; i < ITEMS; i++) price[i+ITEMS] = cheapestWantCost.get(i);
 
-    for (int round = 0; round < V; round++) {
+    for (int round = 0; round < ITEMS; round++) {
       dijkstra();
 
       // update the matching
@@ -237,8 +470,7 @@ public class TradeMaximizer {
 
       // update the prices
       for (int i = 0; i < V; i++) {
-        // if (heap[i].cost < INFINITY) price[i] += heap[i].cost;
-        price[i] += heap[i].cost;
+        price[i] += heapEntry[i].cost();
       }
     }
   }
@@ -246,46 +478,73 @@ public class TradeMaximizer {
   //////////////////////////////////////////////////////////////////////
   
   void displayMatches() {
-    int countTrades = 0;
-    for (int i = 0; i < ITEMS; i++)
-      if (match[i] != i+ITEMS) countTrades++;
+    int numTrades = 0;
+    int numGroups = 0;
+    int totalCost = 0;
+    int sumOfSquares = 0;
+    List< Integer > groupSizes = new ArrayList< Integer >();
 
-    System.out.println("FOUND " + countTrades + " TRADES");
-    System.out.println();
-    System.out.println("TRADE LOOPS:");
-    System.out.println();
     List< String > summary = new ArrayList< String >();
+    List< String > loops = new ArrayList< String >();
 
     boolean[] used = new boolean[ITEMS];
     
     for (int i = 0; i < ITEMS; i++) {
-      if (used[i]) continue;
+      if (used[i] || dummy.get(i)) continue;
       if (match[i] == i+ITEMS) {
-        summary.add(pad(names[i]) + " does not trade");
+        if (showNonTrades) summary.add(pad(names.get(i)) + " does not trade");
       }
       else {
-        for (int j = i; !used[j]; j = match[j] - ITEMS) {
+        int groupSize = 0;
+        for (int j = i; !used[j]; ) {
+          groupSize++;
+          totalCost += matchCost[j];
+          
           used[j] = true;
           assert match[j] != NONE;
-          int other = match[j] - ITEMS;
-          System.out.println(pad(names[j]) + " receives " + names[other]);
-          summary.add(pad(names[j]) + " receives " + names[other] + " and sends to " + names[match[j + ITEMS]]);
+          int fromItem = match[j] - ITEMS;
+          while (dummy.get(fromItem)) fromItem = match[fromItem] - ITEMS;
+          int toItem = match[j + ITEMS];
+          while (dummy.get(toItem)) toItem = match[toItem + ITEMS];
+          loops.add(pad(names.get(j)) + " receives " + names.get(fromItem));
+          summary.add(pad(names.get(j)) + " receives " + pad(names.get(fromItem)) + " and sends to " + names.get(toItem));
+          j = fromItem;
         }
-        System.out.println();
+        numGroups++;
+        numTrades += groupSize;
+        groupSizes.add(groupSize);
+        sumOfSquares += groupSize*groupSize;
+        
+        loops.add("");
       }
     }
 
-    Collections.sort(summary);
-    System.out.println("ITEM SUMMARY:");
-    System.out.println();
-    for (String item : summary) System.out.println(item);
+    if (showLoops) {
+      System.out.println("TRADE LOOPS (" + numTrades + " total trades):");
+      System.out.println();
+      for (String item : loops) System.out.println(item);
+    }
+    
+    if (showSummary) {
+      Collections.sort(summary);
+      System.out.println("ITEM SUMMARY (" + numTrades + " total trades):");
+      System.out.println();
+      for (String item : summary) System.out.println(item);
+      System.out.println();
+    }
 
-    System.out.println();
-    System.out.println(countTrades + " TRADES");
-
-    // long totalCost = 0;
-    // for (long cost : matchCost) totalCost += cost;
-    // System.out.println("Total Cost = " + totalCost);
+    
+    System.out.println("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");
+    if (showStats) {
+      System.out.println("Total cost  = " + totalCost);
+      System.out.println("Num groups  = " + numGroups);
+      System.out.print("Group sizes =");
+      Collections.sort(groupSizes);
+      Collections.reverse(groupSizes);
+      for (int groupSize : groupSizes) System.out.print(" " + groupSize);
+      System.out.println();
+      System.out.println("Sum squares = " + sumOfSquares);
+    }
   }
 
   int width = 1;
@@ -294,61 +553,4 @@ public class TradeMaximizer {
     return name;
   }
 
-  //////////////////////////////////////////////////////////////////////
-  // priority queues implemented as skew heaps
-  
-  static class Heap {
-    int id;
-    long cost;
-    Heap left,right,parent;
-    Heap(int id,long cost) {
-      this.id = id;
-      this.cost = cost;
-    }
-  }
-  
-  static Heap root = null;
-  
-  static void clearHeap() { root = null; }
-  static boolean isEmpty() { return root==null; }
-  
-  static Heap merge(Heap a,Heap b) {
-    if (a == null) return b;
-    if (b == null) return a;
-    if (b.cost < a.cost) { Heap tmp = a; a = b; b = tmp; }
-    { Heap tmp = a.left; a.left = a.right; a.right = tmp; }
-    Heap left = merge(a.left,b);
-    if (left != null) left.parent = a;
-    a.left = left;
-    return a;
-  }
-  
-  static Heap insert(int id,long cost) {
-    Heap h = new Heap(id,cost);
-    root = merge(h,root);
-    root.parent = null;
-    return h;
-  }
-  
-  static void decreaseCost(Heap h,long cost) {
-    assert cost < h.cost;
-    h.cost = cost;
-    if (h == root || cost >= h.parent.cost) return;
-    if (h == h.parent.left) h.parent.left = null;
-    else {
-      assert h == h.parent.right;
-      h.parent.right = null;
-    }
-    h.parent = null;
-    root = merge(root,h);
-    root.parent = null;
-  }
-  
-  static Heap extractMin() {
-    Heap min = root;
-    root = merge(root.left,root.right);
-    if (root != null) root.parent = null;
-    return min;
-  }
-
-}
+} // end TradeMaximizer
