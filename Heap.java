@@ -34,8 +34,8 @@ public class Heap {
     return minEntry;
   }
 
-  public Entry insert(int id,long cost) {
-    Entry entry = new Entry(id,cost);
+  public Entry insert(Graph.Vertex vertex,long cost) {
+    Entry entry = new Entry(vertex,cost);
     root = root==null ? entry : merge(entry,root);
     return entry;
   }
@@ -45,7 +45,7 @@ public class Heap {
    * later call the decreaseCost method.
    */
   public class Entry {
-    public int id() { return id; }
+    public Graph.Vertex vertex() { return vertex; }
     public long cost() { return cost; }
     
     public void decreaseCost(long toCost) {
@@ -68,7 +68,7 @@ public class Heap {
       root = merge(this,root);
     }
 
-    private int id;
+    private Graph.Vertex vertex;
     private long cost;
 
     private Entry child = null;
@@ -77,8 +77,8 @@ public class Heap {
 
     private boolean used = false;
 
-    private Entry(int id,long cost) {
-      this.id = id;
+    private Entry(Graph.Vertex vertex,long cost) {
+      this.vertex = vertex;
       this.cost = cost;
     }
     
@@ -111,7 +111,7 @@ public class Heap {
     Heap h = new Heap();
     java.util.List<Heap.Entry> list =
         new java.util.ArrayList<Heap.Entry>();
-    for (int i = 0; i < 20; i++) list.add( h.insert(0,nums[i]) );
+    for (int i = 0; i < 20; i++) list.add( h.insert(null,nums[i]) );
 
     list.get(5).decreaseCost(nums[5] -= 10);
     list.get(10).decreaseCost(nums[10] -= 10);

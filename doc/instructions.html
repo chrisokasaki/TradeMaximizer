@@ -6,7 +6,7 @@
 <h1>TradeMaximizer</h1>
 
 <p>
-Version 1.1: 25 August 2007 <br>
+Version 1.2a (7 September 2007) <br>
 Created by Chris Okasaki (cokasaki)
 
 <h2>Contents</h2>
@@ -20,6 +20,7 @@ Created by Chris Okasaki (cokasaki)
 <li> <a href="#priorities">Prioritizing Trades</a>
 <li> <a href="#duplicates">Protection from Duplicate Items</a>
 <li> <a href="#options">Controlling TradeMaximizer with Options</a>
+<li> <a href="#officialnames">Official Names</a>
 <li> <a href="#license">License</a>
 </ul>
 
@@ -214,6 +215,7 @@ a want list. The cost is then calculated as a function of rank.
 <li> In LINEAR-PRIORITIES, cost = rank. 
 <li> In TRIANGLE-PRIORITIES, cost = 1+2+...+rank = rank*(rank+1)/2.
 <li> In SQUARE-PRIORITIES, cost = rank*rank.
+<li> In SCALED-PRIORITIES, cost = 1 + (rank-1)*2520/number of wants.
 </ul>
 In the simplest case, rank is equal to the position of the item in the
 list. In other words, the first wanted item has rank 1, the second
@@ -346,6 +348,7 @@ Here are the options supported by TradeMaximizer:
 <li> <tt>LINEAR-PRIORITIES</tt>: Use the 1,2,3,4,... priority scheme. 
 <li> <tt>TRIANGLE-PRIORITIES</tt>: Use the 1,3,6,10,... priority scheme. 
 <li> <tt>SQUARE-PRIORITIES</tt>: Use the 1,4,9,16,... priority scheme. 
+<li> <tt>SCALED-PRIORITIES</tt>: Use the scaled priority scheme, in which priorities are normalized into the range 1..2521.  If you are using this option, then you should also use <tt>BIG-STEP=0</tt>.
 <li> <tt>SMALL-STEP=<i>num</i></tt>: Adjust how priorities change
 between successive entries in a want list.  (The default value is 1.)
 <li> <tt>BIG-STEP=<i>num</i></tt>: Adjust how priorities change for
@@ -357,6 +360,9 @@ each semicolon in a want list.  (The default value is 9.)
 <li> <tt>REQUIRE-COLONS</tt>: Make colons mandatory for every want list. 
 <li> <tt>REQUIRE-USERNAMES</tt>: Make usernames mandatory for every
 want list.
+<p>
+<li> <tt>ITERATIONS=<i>num</i></tt>: If set to a number larger than 1, then use randomization to find <i>num</i> different solutions, keeping the solution with the best sum-of-squares metric.  Note that all of the solutions will have the same number of trades and the same total cost.  (The default value is 1.)
+<li> <tt>SEED=<i>num</i></tt>: Sets the seed for the random number generator to <i>num</i>, so that the results will be repeatable.  Only useful if <tt>ITERATIONS</tt> is set to a value greater than 1.
 <p>
 <li> <tt>HIDE-LOOPS</tt>: Do not output the trade loops. 
 <li> <tt>HIDE-SUMMARY</tt>: Do not output the item summary. 
@@ -376,6 +382,45 @@ to forbid trade loops whose average cost per item exceeds <tt><i>num</i></tt>. N
 that this means that you can end up with less than the maximum number
 of trades. 
 </ul>
+
+<h2><a name="officialnames"/>Official Names</h2>
+
+A moderator can guard against several kinds of errors by including a
+list of official item names at beginning of the want list file (after
+any options, but before the first real want list).  Official names are
+optional, but using official names protects against users
+misspelling their own items (a surprisingly common occurrence!), and
+also helps the system deal gracefully with missing want lists.  In
+addition, official item names help users validate their own want lists
+prior to submission.
+
+Official items should be listed one per line, preceded by a line saying <tt>!BEGIN-OFFICIAL-NAMES</tt> and followed by a line saying <tt>!END-OFFICIAL-NAMES</tt>.  The whole file would then look like
+<pre>
+  #! <i>option</i> ... <i>option</i>
+
+  !BEGIN-OFFICIAL-NAMES
+  <i>item</i>
+  ...
+  <i>item</i>
+  !END-OFFICIAL-NAMES
+
+  <i>wantlist</i>
+  ...
+  <i>wantlist</i>
+</pre>
+When defining the official item names, the rest of the line after the
+item name is ignored.  It is common for moderators to publish a list
+of official item names, together with a brief description of each.
+You can simply copy-and-paste this text in between the
+<tt>!BEGIN-OFFICIAL-NAMES</tt> and <tt>!END-OFFICIAL-NAMES</tt> tags.  The only
+requirement is that the description (if any) should be separated from the item name a space or a colon (or both), as in
+<pre>
+   123-LOW
+   292-DARK Pink Floyd, Dark Side of the Moon
+   305-WHIT: Beatles, The White Album
+</pre>
+
+Note that official names do not apply to dummy items.
 
 <h2><a name="license"/>License</h2>
 

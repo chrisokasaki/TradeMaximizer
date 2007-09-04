@@ -1,6 +1,8 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki (cokasaki)
-// Version 1.1: 29 August 2007
+// Version 1.2a
+// $LastChangedDate$
+// $LastChangedRevision$
 
 import java.io.*;
 import java.util.*;
@@ -8,7 +10,7 @@ import java.util.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
   
-  final String version = "Version 1.1: 29 August 2007";
+  final String version = "Version 1.2a (7 September 2007)";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -31,12 +33,43 @@ public class TradeMaximizer {
     }
 
     long startTime = System.currentTimeMillis();
-    findMatches();
+    graph.removeImpossibleEdges();
+    List<List<Graph.Vertex>> bestCycles = graph.findCycles();
+    int bestSumSquares = sumOfSquares(bestCycles);
+    if (iterations > 1) {
+      graph.saveMatches();
+      for (int i = 0; i < iterations-1; i++) {
+        graph.shuffle();
+        List<List<Graph.Vertex>> cycles = graph.findCycles();
+        int sumSquares = sumOfSquares(cycles);
+        if (sumSquares < bestSumSquares) {
+          bestSumSquares = sumSquares;
+          bestCycles = cycles;
+          graph.saveMatches();
+          int[] groups = new int[cycles.size()];
+          for (int j = 0; j < cycles.size(); j++)
+            groups[j] = cycles.get(j).size();
+          Arrays.sort(groups);
+          System.out.print("[ "+sumSquares + " :");
+          for (int j = groups.length-1; j >= 0; j--)
+            System.out.print(" " + groups[j]);
+          System.out.println(" ]");
+        }
+      }
+      System.out.println();
+      graph.restoreMatches();
+    }
     long stopTime = System.currentTimeMillis();
-    displayMatches();
+    displayMatches(bestCycles);
 
     if (showElapsedTime)
       System.out.println("Elapsed time = " + (stopTime-startTime) + "ms");
+  }
+
+  int sumOfSquares(List<List<Graph.Vertex>> cycles) {
+    int sum = 0;
+    for (List<Graph.Vertex> cycle : cycles) sum += cycle.size()*cycle.size();
+    return sum;
   }
 
   boolean caseSensitive = false;
@@ -56,20 +89,25 @@ public class TradeMaximizer {
   static final int LINEAR_PRIORITIES = 1;
   static final int TRIANGLE_PRIORITIES = 2;
   static final int SQUARE_PRIORITIES = 3;
+  static final int SCALED_PRIORITIES = 4;
 
   int priorityScheme = NO_PRIORITIES;
   int smallStep = 1;
   int bigStep = 9;
   long nonTradeCost = 1000000000L; // 1 billion
+
+  int iterations = 1;
   
   //////////////////////////////////////////////////////////////////////
   
-  List< String > options = new ArrayList< String >();
+  List<String> options = new ArrayList<String>();
+  HashSet<String> officialNames = null;
   
-  List< String[] > readWantLists() {
+  List<String[]> readWantLists() {
     try {
       BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-      List< String[] > wantLists = new ArrayList< String[] >();
+      List<String[]> wantLists = new ArrayList<String[]>();
+      boolean readingOfficialNames = false;
 
       for (int lineNumber = 1;;lineNumber++) {
         String line = in.readLine();
@@ -80,6 +118,8 @@ public class TradeMaximizer {
         if (line.matches("#!.*")) { // declare options
           if (wantLists.size() > 0)
             fatalError("Options (#!...) cannot be declared after first real want list", lineNumber);
+          if (officialNames != null)
+            fatalError("Options (#!...) cannot be declared after official names", lineNumber);
           for (String option : line.toUpperCase().substring(2).trim().split("\\s+")) {
             if (option.equals("CASE-SENSITIVE"))
               caseSensitive = true;
@@ -111,6 +151,8 @@ public class TradeMaximizer {
               priorityScheme = TRIANGLE_PRIORITIES;
             else if (option.equals("SQUARE-PRIORITIES"))
               priorityScheme = SQUARE_PRIORITIES;
+            else if (option.equals("SCALED-PRIORITIES"))
+              priorityScheme = SCALED_PRIORITIES;
             else if (option.startsWith("SMALL-STEP=")) {
               String num = option.substring(11);
               if (!num.matches("\\d+"))
@@ -129,6 +171,18 @@ public class TradeMaximizer {
                 fatalError("NONTRADE-COST argument must be a positive integer",lineNumber);
               nonTradeCost = Long.parseLong(num);
             }
+            else if (option.startsWith("ITERATIONS=")) {
+              String num = option.substring(11);
+              if (!num.matches("[1-9]\\d*"))
+                fatalError("ITERATIONS argument must be a positive integer",lineNumber);
+              iterations = Integer.parseInt(num);
+            }
+            else if (option.startsWith("SEED=")) {
+              String num = option.substring(5);
+              if (!num.matches("[1-9]\\d*"))
+                fatalError("SEED argument must be a positive integer",lineNumber);
+              graph.setSeed(Long.parseLong(num));
+            }
             else
               fatalError("Unknown option \""+option+"\"",lineNumber);
 
@@ -139,6 +193,39 @@ public class TradeMaximizer {
         if (line.matches("#.*")) continue; // skip comment line
         if (line.indexOf("#") != -1)
           fatalError("Comments (#...) cannot be used after beginning of line",lineNumber);
+          
+
+        // handle official names
+        if (line.equalsIgnoreCase("!BEGIN-OFFICIAL-NAMES")) {
+          if (officialNames != null)
+            fatalError("Cannot begin official names more than once", lineNumber);
+          if (wantLists.size() > 0)
+            fatalError("Official names cannot be declared after first real want list", lineNumber);
+            
+          officialNames = new HashSet<String>();
+          readingOfficialNames = true;
+          continue;
+        }
+        if (line.equalsIgnoreCase("!END-OFFICIAL-NAMES")) {
+          if (!readingOfficialNames)
+            fatalError("!END-OFFICIAL-NAMES without matching !BEGIN-OFFICIAL-NAMES", lineNumber);
+          readingOfficialNames = false;
+          continue;
+        }
+        if (readingOfficialNames) {
+          if (line.charAt(0) == ':')
+            fatalError("Line cannot begin with colon",lineNumber);
+          if (line.charAt(0) == '%')
+            fatalError("Cannot give official names for dummy items",lineNumber);
+            
+          String[] toks = line.split("[:\\s]");
+          String name = toks[0];
+          if (!caseSensitive) name = name.toUpperCase();
+          if (officialNames.contains(name))
+            fatalError("Official name "+name+"+ already defined",lineNumber);
+          officialNames.add(name);
+          continue;
+        }
 
         // check parens for user name
         if (line.indexOf("(") == -1 && requireUsernames)
@@ -211,8 +298,10 @@ public class TradeMaximizer {
   void fatalError(String msg,int lineNumber) {
     fatalError(msg + " (line " + lineNumber + ")");
   }
-  
+
   //////////////////////////////////////////////////////////////////////
+
+  Graph graph = new Graph();
 
   List< String > errors = new ArrayList< String >();
 
@@ -220,29 +309,13 @@ public class TradeMaximizer {
   // final long NOTRADE  = 1000000000L; // replaced by nonTradeCost
   final long UNIT     = 1L;
 
-  List< String > names;
-  List< String > users;
-  List< Long > cheapestWantCost;
-  List< Boolean > dummy;
-  
   int ITEMS; // the number of items being traded (including dummy items)
   int DUMMY_ITEMS; // the number of dummy items
-  int[][] wants; // wants[i][j] is the jth item wanted by item i
-  long[][] wantCost;
 
   void buildGraph(List< String[] > wantLists) {
-  
-    users = new ArrayList< String >();
-    names = new ArrayList< String >();
-    cheapestWantCost = new ArrayList< Long >();
-    dummy = new ArrayList< Boolean >();
-    
-    HashMap< String,Integer > nameMap = new HashMap< String,Integer >();
+
     HashMap< String,Integer > unknowns = new HashMap< String,Integer >();
     
-    ArrayList< ArrayList< Integer > > wants = new ArrayList< ArrayList< Integer > >();
-    ArrayList< ArrayList< Long > > wantCost = new ArrayList< ArrayList< Long > >();
-
     // create the nodes
     for (int i = 0; i < wantLists.size(); i++) {
       String[] list = wantLists.get(i);
@@ -255,7 +328,6 @@ public class TradeMaximizer {
         // remove username from list
         list = Arrays.copyOfRange(list,1,list.length);
         wantLists.set(i,list);
-        assert list.length > 1;
         name = list[0];
       }
       boolean isDummy = (name.charAt(0) == '%');
@@ -269,27 +341,20 @@ public class TradeMaximizer {
           list[0] = name;
         }
       }
-      if (nameMap.containsKey(name)) {
+      if (officialNames != null && !officialNames.contains(name)) {
+        errors.add("**** Cannot define want list for "+name+" because it is not an official name.  (Usually indicates a typo by the item owner.)");
+        wantLists.set(i,null);
+      }
+      else if (graph.getVertex(name) != null) {
         errors.add("**** Item " + name + " has multiple want lists--ignoring all but first.  (Sometimes the result of an accidental line break in the middle of a want list.)");
         wantLists.set(i, null);
       }
       else {
-        int node = ITEMS++;
+        ITEMS++;
         if (isDummy) DUMMY_ITEMS++;
-        nameMap.put(name,node);
-
-        if (user != null && !isDummy) { // add user name to display name
-          name = sortByItem ? name + " " + user
-                            : user + " " + name;
-        }
-        names.add(name);
-        users.add(user);
-        dummy.add(isDummy);
-        cheapestWantCost.add(nonTradeCost);
-        wants.add(new ArrayList< Integer >());
-        wantCost.add(new ArrayList< Long >());
-
-        if (!isDummy) width = Math.max(width, name.length());
+        Graph.Vertex vertex = graph.addVertex(name,user,isDummy);
+        
+        if (!isDummy) width = Math.max(width, show(vertex).length());
       }
     }
 
@@ -297,63 +362,84 @@ public class TradeMaximizer {
     for (String[] list : wantLists) {
       if (list == null) continue; // skip the duplicate lists
       String fromName = list[0];
-      int fromNode = nameMap.get(fromName);
+      Graph.Vertex fromVertex = graph.getVertex(fromName);
 
       // add the "no-trade" edge to itself
-      wants.get(fromNode).add(fromNode);
-      wantCost.get(fromNode).add(nonTradeCost);
+      graph.addEdge(fromVertex,fromVertex.twin,nonTradeCost);
 
-      long position = 1;
+      long rank = 1;
       for (int i = 1; i < list.length; i++) {
         String toName = list[i];
         if (toName.equals(";")) {
-          position += bigStep;
+          rank += bigStep;
           continue;
         }
         if (toName.charAt(0) == '%') {
-          if (users.get(fromNode) == null) {
+          if (fromVertex.user == null) {
             errors.add("**** Dummy item " + toName + " used in want list for item " + fromName + ", which does not have a username.");
             continue;
           }
 
-          toName += " for user " + users.get(fromNode); 
+          toName += " for user " + fromVertex.user; 
         }
-        int toNode = nameMap.containsKey(toName) ? nameMap.get(toName) : -1;
-        if (toNode == -1) {
-          int occurrences = unknowns.containsKey(toName) ? unknowns.get(toName) : 0;
-          unknowns.put(toName,occurrences + 1);
+        Graph.Vertex toVertex = graph.getVertex(toName);
+        if (toVertex == null) {
+          if (officialNames != null && officialNames.contains(toName)) {
+            // this is an official item whose owner did not submit a want list
+            rank += smallStep;            
+          }
+          else {
+            int occurrences = unknowns.containsKey(toName) ? unknowns.get(toName) : 0;
+            unknowns.put(toName,occurrences + 1);
+          }
+          continue;
         }
-        else if (fromNode == toNode) {
+        
+        toVertex = toVertex.twin; // adjust to the sending vertex
+        if (toVertex == fromVertex.twin) {
           errors.add("**** Item " + toName + " appears in its own want list.");
         }
-        else if (wants.get(fromNode).indexOf(toNode) != -1) {
+        else if (graph.getEdge(fromVertex,toVertex) != null) {
           if (showRepeats)
             errors.add("**** Item " + toName + " is repeated in want list for " + fromName + ".");
         }
-        else if (users.get(fromNode) != null &&
-                 users.get(toNode) != null &&
-                 users.get(fromNode).equals(users.get(toNode)) &&
-                 !dummy.get(toNode)) {
-          errors.add("**** Item "+names.get(fromNode)+" contains item "+names.get(toNode)+" from the same user ("+users.get(fromNode)+")");
+        else if (!toVertex.isDummy &&
+                 fromVertex.user != null &&
+                 fromVertex.user.equals(toVertex.user)) {
+          errors.add("**** Item "+fromVertex.name +" contains item "+toVertex.name+" from the same user ("+fromVertex.user+")");
         }
         else {
-          wants.get(fromNode).add(toNode);
           long cost = UNIT;
           switch (priorityScheme) {
-            case LINEAR_PRIORITIES:   cost = position; break;
-            case TRIANGLE_PRIORITIES: cost = position*(position+1)/2; break;
-            case SQUARE_PRIORITIES:   cost = position*position; break;
+            case LINEAR_PRIORITIES:   cost = rank; break;
+            case TRIANGLE_PRIORITIES: cost = rank*(rank+1)/2; break;
+            case SQUARE_PRIORITIES:   cost = rank*rank; break;
+            case SCALED_PRIORITIES:   cost = rank; break; // assign later
           }
 
           // all edges out of a dummy node have the same cost
-          if (dummy.get(fromNode)) cost = nonTradeCost;
-          
-          wantCost.get(fromNode).add(cost);
-          cheapestWantCost.set(toNode,Math.min(cost,cheapestWantCost.get(toNode)));
-          position += smallStep;
+          if (fromVertex.isDummy) cost = nonTradeCost;
+
+          graph.addEdge(fromVertex,toVertex,cost);
+
+          rank += smallStep;
         }
       }
+
+      // update costs for those priority schemes that need information such as
+      // number of wants
+      switch (priorityScheme) {
+        case SCALED_PRIORITIES:
+          int n = fromVertex.edges.size()-1;
+          for (Graph.Edge edge : fromVertex.edges) {
+            if (edge.sender != fromVertex.twin)
+              edge.cost = 1 + (edge.cost-1)*2520/n;
+          }
+          break;
+      }
     }
+
+    graph.freeze();
 
     for (Map.Entry< String,Integer > entry : unknowns.entrySet()) {
       String item = entry.getKey();
@@ -362,124 +448,19 @@ public class TradeMaximizer {
       errors.add("**** Unknown item " + item + " (" + occurrences + " occurrence" + plural + ")");
     }
 
-    this.wants = new int[ITEMS][];
-    this.wantCost = new long[ITEMS][];
+  } // end buildGraph
 
-    for (int i = 0; i < ITEMS; i++) {
-      this.wants[i] = new int[wants.get(i).size()];
-      this.wantCost[i] = new long[wantCost.get(i).size()];
-      for (int j = 0; j < wants.get(i).size(); j++) {
-        this.wants[i][j] = wants.get(i).get(j);
-        this.wantCost[i][j] = wantCost.get(i).get(j);
-      }
-    }
+  String show(Graph.Vertex vertex) {
+    if (vertex.user == null || vertex.isDummy) return vertex.name;
+    else if (sortByItem) return vertex.name + " " + vertex.user;
+    else return vertex.user + " " + vertex.name;
   }
 
   //////////////////////////////////////////////////////////////////////
   
-  int NONE = -1;
-  int[] match;
-  long[] price;
-  Heap.Entry[] heapEntry;
-  int[] from;
-
-  int sinkFrom;
-  long sinkCost;
-  long[] matchCost;
-
-  void dijkstra() {
-    Arrays.fill(from,NONE);
-
-    sinkFrom = NONE;
-    sinkCost = INFINITY;
-    
-    Heap heap = new Heap();
-    for (int i = ITEMS; i < 2*ITEMS; i++)
-      heapEntry[i] = heap.insert(i,INFINITY);
-    for (int i = 0; i < ITEMS; i++)
-      heapEntry[i] = heap.insert(i, (match[i] == NONE) ? 0 : INFINITY);
-
-    while (!heap.isEmpty()) {
-      Heap.Entry minEntry = heap.extractMin();
-      int id = minEntry.id();
-      long cost = minEntry.cost();
-      if (cost == INFINITY) break; // everything left is unreachable
-      if (id < ITEMS) {
-        for (int j = 0; j < wants[id].length; j++) {
-          int other = wants[id][j] + ITEMS;
-          if (other == match[id]) continue;
-          long c = price[id] + wantCost[id][j] - price[other];
-          if (cost + c < heapEntry[other].cost()) {
-            from[other] = id;
-            heapEntry[other].decreaseCost(cost + c);
-          }
-        }
-      }
-      // id >= ITEMS
-      else if (match[id] == NONE) {
-        if (cost < sinkCost) {
-          sinkFrom = id;
-          sinkCost = cost;
-        }
-      }
-      else {
-        int other = match[id];
-        long c = price[id] - matchCost[other] - price[other];
-        assert c >= 0;
-        if (cost + c < heapEntry[other].cost()) {
-          from[other] = id;
-          heapEntry[other].decreaseCost(cost + c);
-        }
-      }
-    }
-  }
-
-  void findMatches() {
-    int V = 2*ITEMS;
-    match = new int[V];
-    price = new long[V];
-    heapEntry  = new Heap.Entry[V];
-    from = new int[V];
-    matchCost = new long[ITEMS];
-    
-    Arrays.fill(match,NONE);
-    for (int i = 0; i < ITEMS; i++) price[i+ITEMS] = cheapestWantCost.get(i);
-
-    for (int round = 0; round < ITEMS; round++) {
-      dijkstra();
-
-      // update the matching
-      int right = sinkFrom;
-      while (right != NONE) {
-        int left = from[right];
-
-        // unlink right and left from current matches
-        if (match[right] != NONE) match[match[right]] = NONE;
-        if (match[left] != NONE) match[match[left]] = NONE;
-        
-        match[right] = left;
-        match[left] = right;
-
-        // update matchCost
-        int pos = 0;
-        while (wants[left][pos] != right-ITEMS) pos++;
-        matchCost[left] = wantCost[left][pos];
-
-        right = from[left];
-      }
-
-      // update the prices
-      for (int i = 0; i < V; i++) {
-        price[i] += heapEntry[i].cost();
-      }
-    }
-  }
-
-  //////////////////////////////////////////////////////////////////////
-  
-  void displayMatches() {
+  void displayMatches(List<List<Graph.Vertex>> cycles) {
     int numTrades = 0;
-    int numGroups = 0;
+    int numGroups = cycles.size();
     int totalCost = 0;
     int sumOfSquares = 0;
     List< Integer > groupSizes = new ArrayList< Integer >();
@@ -487,35 +468,27 @@ public class TradeMaximizer {
     List< String > summary = new ArrayList< String >();
     List< String > loops = new ArrayList< String >();
 
-    boolean[] used = new boolean[ITEMS];
-    
-    for (int i = 0; i < ITEMS; i++) {
-      if (used[i] || dummy.get(i)) continue;
-      if (match[i] == i+ITEMS) {
-        if (showNonTrades) summary.add(pad(names.get(i)) + " does not trade");
+    for (List<Graph.Vertex> cycle : cycles) {
+      int size = cycle.size();
+      numTrades += size;
+      sumOfSquares += size*size;
+      groupSizes.add(size);
+      for (Graph.Vertex v : cycle) {
+        assert v.match != v.twin;
+        loops.add(pad(show(v)) + " receives " + show(v.match.twin));
+        summary.add(pad(show(v)) + " receives " + pad(show(v.match.twin)) + " and sends to " + show(v.twin.match));
+        totalCost += v.matchCost;
       }
-      else {
-        int groupSize = 0;
-        for (int j = i; !used[j]; ) {
-          groupSize++;
-          totalCost += matchCost[j];
-          
-          used[j] = true;
-          assert match[j] != NONE;
-          int fromItem = match[j] - ITEMS;
-          while (dummy.get(fromItem)) fromItem = match[fromItem] - ITEMS;
-          int toItem = match[j + ITEMS];
-          while (dummy.get(toItem)) toItem = match[toItem + ITEMS];
-          loops.add(pad(names.get(j)) + " receives " + names.get(fromItem));
-          summary.add(pad(names.get(j)) + " receives " + pad(names.get(fromItem)) + " and sends to " + names.get(toItem));
-          j = fromItem;
-        }
-        numGroups++;
-        numTrades += groupSize;
-        groupSizes.add(groupSize);
-        sumOfSquares += groupSize*groupSize;
-        
-        loops.add("");
+      loops.add("");
+    }
+    if (showNonTrades) {
+      for (Graph.Vertex v : graph.RECEIVERS) {
+        if (v.match == v.twin && !v.isDummy)
+          summary.add(pad(show(v)) + "             does not trade");
+      }
+      for (Graph.Vertex v : graph.orphans) {
+        if (!v.isDummy)
+          summary.add(pad(show(v)) + "             does not trade");
       }
     }
 
@@ -544,6 +517,8 @@ public class TradeMaximizer {
       for (int groupSize : groupSizes) System.out.print(" " + groupSize);
       System.out.println();
       System.out.println("Sum squares = " + sumOfSquares);
+
+//      System.out.println("Orphans     = " + graph.orphans.size());
     }
   }
 
