@@ -1,6 +1,6 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki (cokasaki)
-// Version 1.2a
+// Version 1.2b
 // $LastChangedDate$
 // $LastChangedRevision$
 
@@ -10,7 +10,7 @@ import java.util.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
   
-  final String version = "Version 1.2a (7 September 2007)";
+  final String version = "Version 1.2b (7 September 2007)";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -341,7 +341,7 @@ public class TradeMaximizer {
           list[0] = name;
         }
       }
-      if (officialNames != null && !officialNames.contains(name)) {
+      if (officialNames != null && !officialNames.contains(name) && name.charAt(0) != '%') {
         errors.add("**** Cannot define want list for "+name+" because it is not an official name.  (Usually indicates a typo by the item owner.)");
         wantLists.set(i,null);
       }
