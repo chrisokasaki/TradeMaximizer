@@ -1,6 +1,6 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki (cokasaki)
-// Version 1.2b
+// Version 1.2c
 // $LastChangedDate$
 // $LastChangedRevision$
 
@@ -10,7 +10,7 @@ import java.util.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
   
-  final String version = "Version 1.2b (7 September 2007)";
+  final String version = "Version 1.2c (8 September 2007)";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -428,14 +428,16 @@ public class TradeMaximizer {
 
       // update costs for those priority schemes that need information such as
       // number of wants
-      switch (priorityScheme) {
-        case SCALED_PRIORITIES:
-          int n = fromVertex.edges.size()-1;
-          for (Graph.Edge edge : fromVertex.edges) {
-            if (edge.sender != fromVertex.twin)
-              edge.cost = 1 + (edge.cost-1)*2520/n;
-          }
-          break;
+      if (!fromVertex.isDummy) {
+        switch (priorityScheme) {
+          case SCALED_PRIORITIES:
+            int n = fromVertex.edges.size()-1;
+            for (Graph.Edge edge : fromVertex.edges) {
+              if (edge.sender != fromVertex.twin)
+                edge.cost = 1 + (edge.cost-1)*2520/n;
+            }
+            break;
+        }
       }
     }
 
