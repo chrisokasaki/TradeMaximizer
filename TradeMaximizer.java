@@ -1,16 +1,17 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki (cokasaki)
-// Version 1.2c
+// Version 1.3a
 // $LastChangedDate$
 // $LastChangedRevision$
 
 import java.io.*;
 import java.util.*;
+import java.text.*;
 
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
   
-  final String version = "Version 1.2c (8 September 2007)";
+  final String version = "Version 1.3a";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -25,6 +26,15 @@ public class TradeMaximizer {
     System.out.println();
 
     buildGraph(wantLists);
+    if (showMissing && officialNames != null && officialNames.size() > 0) {
+      for (String name : usedNames) officialNames.remove(name);
+      List<String> missing = new ArrayList<String>(officialNames);
+      Collections.sort(missing);
+      for (String name : missing) {
+        System.out.println("**** Missing want list for official name " +name);
+      }
+      System.out.println();
+    }
     if (showErrors && errors.size() > 0) {
       Collections.sort(errors);
       System.out.println("ERRORS:");
@@ -81,6 +91,7 @@ public class TradeMaximizer {
   boolean showSummary = true;
   boolean showNonTrades = true;
   boolean showStats = true;
+  boolean showMissing = false;
   boolean sortByItem = false;
   boolean allowDummies = false;
   boolean showElapsedTime = false;
@@ -90,6 +101,7 @@ public class TradeMaximizer {
   static final int TRIANGLE_PRIORITIES = 2;
   static final int SQUARE_PRIORITIES = 3;
   static final int SCALED_PRIORITIES = 4;
+  static final int EXPLICIT_PRIORITIES = 5;
 
   int priorityScheme = NO_PRIORITIES;
   int smallStep = 1;
@@ -102,6 +114,7 @@ public class TradeMaximizer {
   
   List<String> options = new ArrayList<String>();
   HashSet<String> officialNames = null;
+  List<String> usedNames = new ArrayList<String>();
   
   List<String[]> readWantLists() {
     try {
@@ -139,6 +152,8 @@ public class TradeMaximizer {
               showNonTrades = false;
             else if (option.equals("HIDE-STATS"))
               showStats = false;
+            else if (option.equals("SHOW-MISSING"))
+              showMissing = true;
             else if (option.equals("SORT-BY-ITEM"))
               sortByItem = true;
             else if (option.equals("ALLOW-DUMMIES"))
@@ -153,6 +168,8 @@ public class TradeMaximizer {
               priorityScheme = SQUARE_PRIORITIES;
             else if (option.equals("SCALED-PRIORITIES"))
               priorityScheme = SCALED_PRIORITIES;
+            else if (option.equals("EXPLICIT-PRIORITIES"))
+              priorityScheme = EXPLICIT_PRIORITIES;
             else if (option.startsWith("SMALL-STEP=")) {
               String num = option.substring(11);
               if (!num.matches("\\d+"))
@@ -191,9 +208,15 @@ public class TradeMaximizer {
           continue;
         }
         if (line.matches("#.*")) continue; // skip comment line
-        if (line.indexOf("#") != -1)
-          fatalError("Comments (#...) cannot be used after beginning of line",lineNumber);
-          
+        if (line.indexOf("#") != -1) {
+          if (readingOfficialNames) {
+            if (line.split("[:\\s]")[0].indexOf("#") != -1) {
+              fatalError("# symbol cannot be used in an item name",lineNumber);
+            }
+          }
+          else
+            fatalError("Comments (#...) cannot be used after beginning of line",lineNumber);
+        }
 
         // handle official names
         if (line.equalsIgnoreCase("!BEGIN-OFFICIAL-NAMES")) {
@@ -312,6 +335,13 @@ public class TradeMaximizer {
   int ITEMS; // the number of items being traded (including dummy items)
   int DUMMY_ITEMS; // the number of dummy items
 
+  String[] deleteFirst(String[] a) {
+    assert a.length > 0;
+    String[] b = new String[a.length-1];
+    for (int i = 0; i < b.length; i++) b[i] = a[i+1];
+    return b;
+  }
+  
   void buildGraph(List< String[] > wantLists) {
 
     HashMap< String,Integer > unknowns = new HashMap< String,Integer >();
@@ -326,7 +356,9 @@ public class TradeMaximizer {
       if (name.charAt(0) == '(') {
         user = name.replaceAll("#"," "); // restore spaces in username
         // remove username from list
-        list = Arrays.copyOfRange(list,1,list.length);
+        list = deleteFirst(list);
+          // was Arrays.copyOfRange(list,1,list.length);
+          // but that caused problems on Macs
         wantLists.set(i,list);
         name = list[0];
       }
@@ -353,6 +385,8 @@ public class TradeMaximizer {
         ITEMS++;
         if (isDummy) DUMMY_ITEMS++;
         Graph.Vertex vertex = graph.addVertex(name,user,isDummy);
+        if (officialNames != null && officialNames.contains(name))
+          usedNames.add(name);
         
         if (!isDummy) width = Math.max(width, show(vertex).length());
       }
@@ -373,6 +407,25 @@ public class TradeMaximizer {
         if (toName.equals(";")) {
           rank += bigStep;
           continue;
+        }
+        if (toName.indexOf('=') >= 0) {
+          if (priorityScheme != EXPLICIT_PRIORITIES) {
+            errors.add("**** Cannot use '=' annotation in item "+toName+" in want list for item "+fromName+" unless using EXPLICIT_PRIORITIES.");
+            continue;
+          }
+          if (!toName.matches("[^=]+=[0-9]+")) {
+            errors.add("**** Item "+toName+" in want list for item "+fromName+" must have the format 'name=number'.");
+            continue;
+          }
+          String[] parts = toName.split("=");
+          assert(parts.length == 2);
+          long explicitCost = Long.parseLong(parts[1]);
+          if (explicitCost < 1) {
+            errors.add("**** Explicit priority must be positive in item "+toName+" in want list for item "+fromName+".");
+            continue;
+          }
+          rank = explicitCost;
+          toName = parts[0];
         }
         if (toName.charAt(0) == '%') {
           if (fromVertex.user == null) {
@@ -415,6 +468,7 @@ public class TradeMaximizer {
             case TRIANGLE_PRIORITIES: cost = rank*(rank+1)/2; break;
             case SQUARE_PRIORITIES:   cost = rank*rank; break;
             case SCALED_PRIORITIES:   cost = rank; break; // assign later
+            case EXPLICIT_PRIORITIES: cost = rank; break;
           }
 
           // all edges out of a dummy node have the same cost
@@ -509,9 +563,14 @@ public class TradeMaximizer {
     }
 
     
-    System.out.println("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");
+    System.out.print("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");    
+    if (ITEMS-DUMMY_ITEMS == 0) System.out.println();
+    else System.out.println(new DecimalFormat(" (0.0%)").format(numTrades/(double)(ITEMS-DUMMY_ITEMS)));
+    
     if (showStats) {
-      System.out.println("Total cost  = " + totalCost);
+      System.out.print("Total cost  = " + totalCost);
+      if (numTrades == 0) System.out.println();
+      else System.out.println(new DecimalFormat(" (avg 0.00)").format(totalCost/(double)numTrades));
       System.out.println("Num groups  = " + numGroups);
       System.out.print("Group sizes =");
       Collections.sort(groupSizes);

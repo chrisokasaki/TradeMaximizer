@@ -6,7 +6,7 @@
 <h1>TradeMaximizer</h1>
 
 <p>
-Version 1.2c (8 September 2007) <br>
+Version 1.3a (7 March 2008) <br>
 Created by Chris Okasaki (cokasaki)
 
 <h2>Contents</h2>
@@ -349,6 +349,11 @@ Here are the options supported by TradeMaximizer:
 <li> <tt>TRIANGLE-PRIORITIES</tt>: Use the 1,3,6,10,... priority scheme. 
 <li> <tt>SQUARE-PRIORITIES</tt>: Use the 1,4,9,16,... priority scheme. 
 <li> <tt>SCALED-PRIORITIES</tt>: Use the scaled priority scheme, in which priorities are normalized into the range 1..2521.  If you are using this option, then you should also use <tt>BIG-STEP=0</tt>.
+<li> <tt>EXPLICIT-PRIORITIES</tt>: Allow the user to annotate each wanted item with an explicit priority.  The annotated item is written <tt><i>itemname</i>=<i>priority</i></tt>.  If the annotation is missing, then the priority of the current item advances over the priority of the previous item as in linear priorities. For example, in the want list
+<br>
+<tt>&nbsp;&nbsp;&nbsp;A : B=15 C D=193</tt>
+<br>
+the three wanted items have priorities 15, 16, and 193 respectively.
 <li> <tt>SMALL-STEP=<i>num</i></tt>: Adjust how priorities change
 between successive entries in a want list.  (The default value is 1.)
 <li> <tt>BIG-STEP=<i>num</i></tt>: Adjust how priorities change for
@@ -364,6 +369,7 @@ want list.
 <li> <tt>ITERATIONS=<i>num</i></tt>: If set to a number larger than 1, then use randomization to find <i>num</i> different solutions, keeping the solution with the best sum-of-squares metric.  Note that all of the solutions will have the same number of trades and the same total cost.  (The default value is 1.)
 <li> <tt>SEED=<i>num</i></tt>: Sets the seed for the random number generator to <i>num</i>, so that the results will be repeatable.  Only useful if <tt>ITERATIONS</tt> is set to a value greater than 1.
 <p>
+<li> <tt>SHOW-MISSING</tt>: Show items that appear in the <a href="#officalnames">official names section</a>, but that do not have want lists.  (Ignored if there are no official names.)
 <li> <tt>HIDE-LOOPS</tt>: Do not output the trade loops. 
 <li> <tt>HIDE-SUMMARY</tt>: Do not output the item summary. 
 <li> <tt>HIDE-NONTRADES</tt>: Do not include items that did not trade in the item summary. 
@@ -419,8 +425,10 @@ requirement is that the description (if any) should be separated from the item n
    292-DARK Pink Floyd, Dark Side of the Moon
    305-WHIT: Beatles, The White Album
 </pre>
-
 Note that official names do not apply to dummy items.
+
+<p>
+If official names are used, then the <tt>SHOW-MISSING</tt> option can be used to show which items do not have want lists.
 
 <h2><a name="license"/>License</h2>
 
@@ -428,7 +436,7 @@ Note that official names do not apply to dummy items.
 The MIT License
 
 <p>
-Copyright (c) 2007 Chris Okasaki
+Copyright (c) 2007-2008 Chris Okasaki
 
 <p>
 Permission is hereby granted, free of charge, to any person obtaining a copy
