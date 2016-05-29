@@ -1,15 +1,16 @@
+package tm;
 import java.util.*;
 
 public class Graph {
 
   static enum VertexType { RECEIVER, SENDER }
-  
+
   public static class Vertex {
     String name;
     String user;
     boolean isDummy;
     VertexType type;
-    
+
     Vertex(String name, String user, boolean isDummy, VertexType type) {
       this.name = name;
       this.user = user;
@@ -48,22 +49,22 @@ public class Graph {
       this.sender = sender;
       this.cost = cost;
     }
-    
+
     private Edge() {} // hide default constructor
   }
-  
+
   public Vertex getVertex(String name) {
     // returns null if name is undefined
     return nameMap.get(name);
   }
-  
+
   public Vertex addVertex(String name,String user,boolean isDummy) {
     assert !frozen;
     assert getVertex(name) == null;
     Vertex receiver = new Vertex(name,user,isDummy,VertexType.RECEIVER);
     receivers.add(receiver);
     nameMap.put(name,receiver);
-    
+
     Vertex sender = new Vertex(name+" sender",user,isDummy,VertexType.SENDER);
     senders.add(sender);
     receiver.twin = sender;
@@ -89,16 +90,16 @@ public class Graph {
   }
 
   boolean frozen = false;
-  
+
   void freeze() {
     assert !frozen;
-    
+
     RECEIVERS = receivers.toArray(new Vertex[0]);
     SENDERS = senders.toArray(new Vertex[0]);
     Edge[] tmp = new Edge[0];
     for (Vertex v : RECEIVERS) v.EDGES = v.edges.toArray(tmp);
     for (Vertex v : SENDERS) v.EDGES = v.edges.toArray(tmp);
-    
+
     frozen = true;
   }
 
@@ -156,7 +157,7 @@ public class Graph {
     }
     if (goodCount == edges.length) return edges;
     Edge[] goodEdges = new Edge[goodCount];
-    
+
     goodCount = 0;
     for (Edge edge : edges) {
       if (edge.receiver.component == edge.sender.component)
@@ -167,10 +168,10 @@ public class Graph {
 
   void removeImpossibleEdges() {
     assert frozen;
-    
+
     advanceTimestamp();
     finished = new ArrayList<Vertex>(RECEIVERS.length);
-    
+
     // run strongly connected components and label all the components
     for (Vertex v : RECEIVERS)
       if (v.mark != timestamp) visitReceivers(v);
@@ -181,7 +182,7 @@ public class Graph {
         visitSenders(v);
       }
     }
-    
+
     // now remove all edges between two different components
     for (Vertex v : RECEIVERS) {
       v.EDGES = removeBadEdges(v.EDGES);
@@ -209,7 +210,7 @@ public class Graph {
       }
     }
     if (goodCount == RECEIVERS.length) return;
-    
+
     Vertex[] receivers = new Vertex[goodCount];
     goodCount = 0;
     for (Vertex v : RECEIVERS) {
@@ -223,7 +224,7 @@ public class Graph {
     }
     SENDERS = senders;
   }
-  
+
   //////////////////////////////////////////////////////////////////////
 
   Vertex sinkFrom;
@@ -234,7 +235,7 @@ public class Graph {
   void dijkstra() {
     sinkFrom = null;
     sinkCost = Long.MAX_VALUE;
-    
+
     Heap heap = new Heap();
     for (Vertex v : SENDERS) {
       v.from = null;
@@ -283,7 +284,7 @@ public class Graph {
 
   List<List<Vertex>> findCycles() {
     assert frozen;
-  
+
     for (Vertex v : RECEIVERS) {
       v.match = null;
       v.price = 0;
@@ -328,7 +329,7 @@ public class Graph {
     elideDummies();
     advanceTimestamp();
     List<List<Vertex>> cycles = new ArrayList<List<Vertex>>();
-    
+
     for (Vertex vertex : RECEIVERS) {
       if (vertex.mark == timestamp || vertex.match == vertex.twin) continue;
 
@@ -349,7 +350,7 @@ public class Graph {
   private Random random = new Random();
 
   void setSeed(long seed) { random.setSeed(seed); }
-  
+
   <T> void shuffle(T[] a) {
     for (int i = a.length; i > 1; i--) {
       int j = random.nextInt(i);
@@ -358,7 +359,7 @@ public class Graph {
       a[i-1] = tmp;
     }
   }
-  
+
   void shuffle() {
     shuffle(RECEIVERS);
     for (Vertex v : RECEIVERS) shuffle(v.EDGES);
@@ -368,7 +369,7 @@ public class Graph {
     //  for (Vertex v : SENDERS) shuffle(v.EDGES);
   }
 
-  void elideDummies() {
+  void elideDummies() { // TODO fix dummy cycle
     for (Vertex v : RECEIVERS) {
       if (v.isDummy) continue;
 

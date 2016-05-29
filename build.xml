@@ -1,0 +1,26 @@
+<project>
+
+    <target name="clean">
+        <delete dir="build"/>
+    </target>
+
+    <target name="compile">
+        <mkdir dir="build/classes"/>
+        <javac srcdir="src" destdir="build/classes" source="1.6" target="1.6"/>
+    </target>
+
+    <target name="jar">
+        <mkdir dir="build/jar"/>
+        <jar destfile="build/jar/tm.jar" basedir="build/classes">
+            <manifest>
+                <attribute name="Main-Class" value="tm.TradeMaximizer"/>
+            </manifest>
+        </jar>
+        <copy file="build/jar/tm.jar" todir="."/>
+    </target>
+
+    <target name="run">
+        <java jar="build/jar/tm.jar" fork="true" input="samples/onewant.txt"/>
+    </target>
+
+</project>

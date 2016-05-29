@@ -1,21 +1,21 @@
 // TradeMaximizer.java
-// Created by Chris Okasaki (cokasaki)
-// Version 1.3a
-// $LastChangedDate$
-// $LastChangedRevision$
+// Created by Chris Okasaki
+// Version 1.3b (dev)
 
+package tm;
 import java.io.*;
 import java.util.*;
 import java.text.*;
 
+
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
-  
-  final String version = "Version 1.3a";
+
+  final String version = "Version 1.3b (dev)";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
-    
+
     List< String[] > wantLists = readWantLists();
     if (wantLists == null) return;
     if (options.size() > 0) {
@@ -109,14 +109,15 @@ public class TradeMaximizer {
   long nonTradeCost = 1000000000L; // 1 billion
 
   int iterations = 1;
-  
+
   //////////////////////////////////////////////////////////////////////
-  
+
   List<String> options = new ArrayList<String>();
   HashSet<String> officialNames = null;
   List<String> usedNames = new ArrayList<String>();
-  
+
   List<String[]> readWantLists() {
+    boolean bigStepFlag = false, smallStepFlag = false;
     try {
       BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
       List<String[]> wantLists = new ArrayList<String[]>();
@@ -166,8 +167,14 @@ public class TradeMaximizer {
               priorityScheme = TRIANGLE_PRIORITIES;
             else if (option.equals("SQUARE-PRIORITIES"))
               priorityScheme = SQUARE_PRIORITIES;
-            else if (option.equals("SCALED-PRIORITIES"))
+            else if (option.equals("SCALED-PRIORITIES")) {
               priorityScheme = SCALED_PRIORITIES;
+              if (bigStepFlag && bigStep != 0)
+                fatalError("Do not set BIG-STEP when using SCALED-PRIORITIES",lineNumber);
+              if (smallStepFlag && smallStep != 1)
+                fatalError("Do not set SMALL-STEP when using SCALED-PRIORITIES",lineNumber);
+              bigStep = 0;
+            }
             else if (option.equals("EXPLICIT-PRIORITIES"))
               priorityScheme = EXPLICIT_PRIORITIES;
             else if (option.startsWith("SMALL-STEP=")) {
@@ -175,12 +182,18 @@ public class TradeMaximizer {
               if (!num.matches("\\d+"))
                 fatalError("SMALL-STEP argument must be a non-negative integer",lineNumber);
               smallStep = Integer.parseInt(num);
+              if (priorityScheme == SCALED_PRIORITIES && smallStep != 1)
+                fatalError("Do not set SMALL-STEP when using SCALED-PRIORITIES",lineNumber);
+              smallStepFlag = true;
             }
             else if (option.startsWith("BIG-STEP=")) {
               String num = option.substring(9);
               if (!num.matches("\\d+"))
                 fatalError("BIG-STEP argument must be a non-negative integer",lineNumber);
               bigStep = Integer.parseInt(num);
+              if (priorityScheme == SCALED_PRIORITIES && bigStep != 0)
+                fatalError("Do not set BIG-STEP when using SCALED-PRIORITIES",lineNumber);
+              bigStepFlag = true;
             }
             else if (option.startsWith("NONTRADE-COST=")) {
               String num = option.substring(14);
@@ -224,7 +237,7 @@ public class TradeMaximizer {
             fatalError("Cannot begin official names more than once", lineNumber);
           if (wantLists.size() > 0)
             fatalError("Official names cannot be declared after first real want list", lineNumber);
-            
+
           officialNames = new HashSet<String>();
           readingOfficialNames = true;
           continue;
@@ -240,7 +253,7 @@ public class TradeMaximizer {
             fatalError("Line cannot begin with colon",lineNumber);
           if (line.charAt(0) == '%')
             fatalError("Cannot give official names for dummy items",lineNumber);
-            
+
           String[] toks = line.split("[:\\s]");
           String name = toks[0];
           if (!caseSensitive) name = name.toUpperCase();
@@ -277,7 +290,7 @@ public class TradeMaximizer {
         else if (line.indexOf(")") > 0)
           fatalError("Bad ')' on a line that does not have a '('",lineNumber);
 
-          
+
         // check semicolons
         line = line.replaceAll(";"," ; ");
         int semiPos = line.indexOf(";");
@@ -288,7 +301,7 @@ public class TradeMaximizer {
           if (before.length() == 0 || before.charAt(before.length()-1) == ')')
             fatalError("Semicolon cannot appear before first item on line", lineNumber);
         }
-        
+
         // check and remove colon
         int colonPos = line.indexOf(":");
         if (colonPos != -1) {
@@ -341,11 +354,11 @@ public class TradeMaximizer {
     for (int i = 0; i < b.length; i++) b[i] = a[i+1];
     return b;
   }
-  
+
   void buildGraph(List< String[] > wantLists) {
 
     HashMap< String,Integer > unknowns = new HashMap< String,Integer >();
-    
+
     // create the nodes
     for (int i = 0; i < wantLists.size(); i++) {
       String[] list = wantLists.get(i);
@@ -387,7 +400,7 @@ public class TradeMaximizer {
         Graph.Vertex vertex = graph.addVertex(name,user,isDummy);
         if (officialNames != null && officialNames.contains(name))
           usedNames.add(name);
-        
+
         if (!isDummy) width = Math.max(width, show(vertex).length());
       }
     }
@@ -433,13 +446,13 @@ public class TradeMaximizer {
             continue;
           }
 
-          toName += " for user " + fromVertex.user; 
+          toName += " for user " + fromVertex.user;
         }
         Graph.Vertex toVertex = graph.getVertex(toName);
         if (toVertex == null) {
           if (officialNames != null && officialNames.contains(toName)) {
             // this is an official item whose owner did not submit a want list
-            rank += smallStep;            
+            rank += smallStep;
           }
           else {
             int occurrences = unknowns.containsKey(toName) ? unknowns.get(toName) : 0;
@@ -447,7 +460,7 @@ public class TradeMaximizer {
           }
           continue;
         }
-        
+
         toVertex = toVertex.twin; // adjust to the sending vertex
         if (toVertex == fromVertex.twin) {
           errors.add("**** Item " + toName + " appears in its own want list.");
@@ -513,7 +526,7 @@ public class TradeMaximizer {
   }
 
   //////////////////////////////////////////////////////////////////////
-  
+
   void displayMatches(List<List<Graph.Vertex>> cycles) {
     int numTrades = 0;
     int numGroups = cycles.size();
@@ -553,7 +566,7 @@ public class TradeMaximizer {
       System.out.println();
       for (String item : loops) System.out.println(item);
     }
-    
+
     if (showSummary) {
       Collections.sort(summary);
       System.out.println("ITEM SUMMARY (" + numTrades + " total trades):");
@@ -562,11 +575,11 @@ public class TradeMaximizer {
       System.out.println();
     }
 
-    
-    System.out.print("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");    
+
+    System.out.print("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");
     if (ITEMS-DUMMY_ITEMS == 0) System.out.println();
     else System.out.println(new DecimalFormat(" (0.0%)").format(numTrades/(double)(ITEMS-DUMMY_ITEMS)));
-    
+
     if (showStats) {
       System.out.print("Total cost  = " + totalCost);
       if (numTrades == 0) System.out.println();

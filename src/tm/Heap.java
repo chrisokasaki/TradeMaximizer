@@ -1,5 +1,6 @@
 // Priority queues implemented as pairing heaps
 
+package tm;
 public class Heap {
 
   public boolean isEmpty() {
@@ -47,7 +48,7 @@ public class Heap {
   public class Entry {
     public Graph.Vertex vertex() { return vertex; }
     public long cost() { return cost; }
-    
+
     public void decreaseCost(long toCost) {
       assert !used;
       assert toCost < cost;
@@ -81,7 +82,7 @@ public class Heap {
       this.vertex = vertex;
       this.cost = cost;
     }
-    
+
     private Entry() {} // hide the default constructor
   }
 
@@ -89,7 +90,7 @@ public class Heap {
 
   private Entry merge(Entry a,Entry b) {
     assert a != null && b != null;
-    
+
     // make sure that a's root <= b's root, swap if necessary
     if (b.cost < a.cost) { Entry tmp = a; a = b; b = tmp; }
 
