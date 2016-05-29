@@ -1,6 +1,6 @@
 # TradeMaximizer
 
-Version 1.3b (dev)
+Version 1.3b  
 Created by Chris Okasaki
 
 ## Contents
@@ -214,11 +214,7 @@ Here are the options supported by TradeMaximizer:
 - `TRIANGLE-PRIORITIES`: Use the 1,3,6,10,... priority scheme.
 - `SQUARE-PRIORITIES`: Use the 1,4,9,16,... priority scheme.
 - `SCALED-PRIORITIES`: Use the scaled priority scheme, in which priorities are normalized into the range 1..2521.  If you are using this option, then you should also use `BIG-STEP=0`.
-- `EXPLICIT-PRIORITIES`: Allow the user to annotate each wanted item with an explicit priority.  The annotated item is written <tt><i>itemname</i>=<i>priority</i></tt>.  If the annotation is missing, then the priority of the current item advances over the priority of the previous item as in linear priorities. For example, in the want list
-```
-  A : B=15 C D=193
-```
-the three wanted items have priorities 15, 16, and 193 respectively.
+- `EXPLICIT-PRIORITIES`: Allow the user to annotate each wanted item with an explicit priority.  The annotated item is written <tt><i>itemname</i>=<i>priority</i></tt>.  If the annotation is missing, then the priority of the current item advances over the priority of the previous item as in linear priorities. For example, in the want list `A : B=15 C D=193` the three wanted items have priorities 15, 16, and 193 respectively.
 - <tt>SMALL-STEP=<i>num</i></tt>: Adjust how priorities change between successive entries in a want list.  (The default value is 1.)
 - <tt>BIG-STEP=<i>num</i></tt>: Adjust how priorities change for each semicolon in a want list.  (The default value is 9.)
 

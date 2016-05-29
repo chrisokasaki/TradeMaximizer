@@ -1,6 +1,6 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki
-// Version 1.3b (dev)
+// Version 1.3b
 
 package tm;
 import java.io.*;
@@ -11,7 +11,7 @@ import java.text.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
 
-  final String version = "Version 1.3b (dev)";
+  final String version = "Version 1.3b";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -530,8 +530,8 @@ public class TradeMaximizer {
   void displayMatches(List<List<Graph.Vertex>> cycles) {
     int numTrades = 0;
     int numGroups = cycles.size();
-    int totalCost = 0;
-    int sumOfSquares = 0;
+    long totalCost = 0;
+    long sumOfSquares = 0;
     List< Integer > groupSizes = new ArrayList< Integer >();
 
     List< String > summary = new ArrayList< String >();

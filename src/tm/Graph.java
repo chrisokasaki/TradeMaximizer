@@ -369,11 +369,9 @@ public class Graph {
     //  for (Vertex v : SENDERS) shuffle(v.EDGES);
   }
 
-  void elideDummies() { // TODO fix dummy cycle
+  void elideDummies() {
     for (Vertex v : RECEIVERS) {
-      if (v.isDummy) continue;
-
-      while (v.match.isDummy) {
+      while (v.match.isDummy && v.match != v.twin) {
         Vertex dummySender = v.match;
         Vertex nextSender = dummySender.twin.match;
         v.match = nextSender;
