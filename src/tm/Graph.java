@@ -36,12 +36,15 @@ public class Graph {
 
     Vertex savedMatch = null;
     long savedMatchCost = 0;
+
+    private boolean dirty = true;  // only used for senders
   }
 
   public static class Edge {
     Vertex receiver;
     Vertex sender;
     long cost;
+    EdgeStatus status = EdgeStatus.UNKNOWN;
 
     Edge(Vertex receiver,Vertex sender,long cost) {
       assert receiver.type == VertexType.RECEIVER;
@@ -81,7 +84,6 @@ public class Graph {
     sender.edgeMap.put(receiver,edge);
     receiver.edgeList.add(edge);
     sender.edgeList.add(edge);
-    sender.minimumInCost = Math.min(cost,sender.minimumInCost);
     return edge;
   }
 
@@ -165,11 +167,13 @@ public class Graph {
     for (Edge edge : v.edges) {
       if (edge.receiver.component == edge.sender.component)
         v.edges[goodCount++] = edge;
+      else
+        edge.sender.dirty = true;
     }
     v.edges = Arrays.copyOf(v.edges, goodCount);
   }
 
-  void removeImpossibleEdges() {
+  void removeImpossibleEdgesAndOrphans() {
     assert frozen;
 
     advanceTimestamp();
@@ -188,13 +192,7 @@ public class Graph {
 
     // now remove all edges between two different components
     for (Vertex v : receivers) removeBadEdges(v);
-    for (Vertex v : senders) {
-      removeBadEdges(v);
-
-      v.minimumInCost = Long.MAX_VALUE;
-      for (Edge edge : v.edges)
-        v.minimumInCost = Math.min(edge.cost,v.minimumInCost);
-    }
+    for (Vertex v : senders) removeBadEdges(v);
 
     removeOrphans();
   }
@@ -202,7 +200,7 @@ public class Graph {
   // remove all vertices whose only edge is the self (nontrade) edge
   // MUST ONLY BE CALLED AFTER SCC, SO THAT THE SENDER AND RECEIVER OF THE ORPHAN
   // WILL **BOTH** ONLY HAVE A SINGLE EDGE
-  void removeOrphans() {
+  private void removeOrphans() {
     int rCount = 0;
     for (Vertex v : receivers) {
       if (v.edges.length > 1 || v.edges[0].sender != v.twin) {
@@ -231,7 +229,7 @@ public class Graph {
   Vertex sinkFrom;
   long sinkCost;
 
-  static final long INFINITY = 100000000000000L; // 10^14
+  static final long INFINITY = 10000000000000000L; // 10^16
 
   void dijkstra() {
     sinkFrom = null;
@@ -259,6 +257,7 @@ public class Graph {
           if (other == vertex.match) continue;
           long c = vertex.price + e.cost - other.price;
           assert c >= 0;
+          assert cost + c < INFINITY;
           if (cost + c < other.heapEntry.cost()) {
             other.heapEntry.decreaseCost(cost + c);
             other.from = vertex;
@@ -292,6 +291,12 @@ public class Graph {
     }
     for (Vertex v : senders) {
       v.match = null;
+      if (v.dirty) {
+        v.minimumInCost = Long.MAX_VALUE;
+        for (Edge edge : v.edges)
+          v.minimumInCost = Math.min(edge.cost,v.minimumInCost);
+        v.dirty = false;
+      }
       v.price = v.minimumInCost;
     }
 
@@ -401,4 +406,261 @@ public class Graph {
     }
   }
 
+  /////////////////////////////////////////////////////////////////
+
+  void shrink(int level, boolean verbose) {
+    assert level >= 0;
+
+    long startTime = System.currentTimeMillis();
+    reportStats("Original", verbose);
+
+    removeImpossibleEdgesAndOrphans();
+    reportStats("Shrink 0 (SCC)", verbose);
+    if (level == 0) return;
+
+    int factor = receivers.length+1;
+
+    scaleUpEdgeCosts(factor);
+    findRequiredEdgesAndShrink(verbose);
+    removeImpossibleEdgesAndOrphans();
+    reportStats("Shrink 1 (SCC)", verbose);
+    if (verbose) System.out.println("elapsed time = " + (System.currentTimeMillis() - startTime) + "ms");
+
+    if (level > 1) {
+      findForbiddenEdgesAndShrink(verbose);
+      removeImpossibleEdgesAndOrphans();
+      reportStats("Shrink 2 (SCC)", verbose);
+      if (verbose) System.out.println("elapsed time = " + (System.currentTimeMillis() - startTime) + "ms");
+    }
+    scaleDownEdgeCosts(factor);
+  }
+
+  void scaleUpEdgeCosts(int factor) {
+    for (Vertex v : senders) {
+      v.dirty = true;
+      for (Edge e : v.edges)
+        e.cost *= factor;
+    }
+  }
+
+  void scaleDownEdgeCosts(int factor) {
+    for (Vertex v : senders) {
+      v.dirty = true;
+      for (Edge e : v.edges)
+        e.cost /= factor;
+    }
+  }
+
+  static enum EdgeStatus { UNKNOWN, REQUIRED, OPTIONAL, FORBIDDEN }
+  // an edge is
+  //   - REQUIRED if it is in *every* optimal solution
+  //   - OPTIONAL if it is in some but not all optimal solutions
+  //   - FORBIDDEN if it is in *no* optimal solutions
+  //   - UNKNOWN if its status has not yet been determined
+
+  // Identify which edges are REQUIRED
+  // All all other edges from the same receiver or sender *must* be forbidden
+  // so delete them
+  // leaves the cost of all required edges incremented by 1
+  void findRequiredEdgesAndShrink(boolean verbose) {
+    int numRequired = receivers.length;
+    long totalCost = 0;
+    Edge[] requiredEdges = new Edge[numRequired];
+    int run = 1;
+
+    if (!verbose) System.out.print("Shrink (level 1) ");
+
+    // Find initial solution. Temporaritly mark all chosen edges as REQUIRED
+    // and bump their costs.
+    findBestMatches();
+    for (int i = 0; i < receivers.length; i++) {
+      Vertex v = receivers[i];
+      Edge e = v.edgeMap.get(v.match);
+      totalCost += e.cost;
+      requiredEdges[i] = e;
+      e.status = EdgeStatus.REQUIRED;
+      e.cost++;
+      if (e.cost == e.sender.minimumInCost+1) e.sender.dirty = true;
+    }
+    reportStatsOrDot("Shrink 1."+run, verbose);
+
+    // Find new solutions.  Because of the bumped costs, each new solution
+    // will include as many new edges as possible.  Any previously REQUIRED
+    // edge that is not included in one of these solutions is not actually
+    // required after all, so mark it as OPTIONAL and unbump its cost.
+    for (run = 2; numRequired > 0; run++) {
+      findBestMatches();
+      long currentCost = 0;
+      HashSet<Edge> edgeSet = new HashSet<Edge>(receivers.length);
+      for (Vertex v : receivers) {
+        Edge e = v.edgeMap.get(v.match);
+        edgeSet.add(e);
+        currentCost += e.cost;
+        if (e.status != EdgeStatus.REQUIRED) e.status = EdgeStatus.OPTIONAL;
+      }
+      if (currentCost == totalCost + numRequired) {  // no new edges were found
+        reportStatsOrDot("Shrink 1."+run, verbose);
+        break;
+      }
+      int count = 0;
+      for (int i = 0; i < numRequired; i++) {
+        Edge e = requiredEdges[i];
+        if (edgeSet.contains(e)) {
+          requiredEdges[count++] = e;
+        }
+        else {
+          // this edge isn't required after all
+          e.status = EdgeStatus.OPTIONAL;
+          e.cost--;
+          if (e.cost == e.sender.minimumInCost-1) e.sender.dirty = true;
+        }
+      }
+      numRequired = count;
+      reportStatsOrDot("Shrink 1."+run, verbose);
+    }
+
+    // at this point everything marked REQUIRED is accurate, which means we can
+    // delete all other edges from that sender or to that receiver.  Those other
+    // edges cannot have been marked OPTIONAL so must still be marked UNKNOWN.
+    for (int i = 0; i < numRequired; i++) {
+      Edge e = requiredEdges[i];
+      markEdgesForbiddenIfNotRequired(e.receiver);
+      markEdgesForbiddenIfNotRequired(e.sender);
+    }
+    for (Vertex v : receivers) removeEdges(v, EdgeStatus.FORBIDDEN);
+    for (Vertex v : senders) removeEdges(v, EdgeStatus.FORBIDDEN);
+
+    for (int i = 0; i < numRequired; i++) {
+      Edge e = requiredEdges[i];
+      assert e.receiver.edges.length == 1;
+      assert e.sender.edges.length == 1;
+    }
+
+    if (verbose) reportStats("Shrink 1 complete", verbose);
+    else System.out.println();
+  }
+
+  // must be called *after* findRequiredEdgesAndShrink
+  // the edges still marked UNKNOWN are either OPTIONAL or FORBIDDEN
+  // mark all the OPTIONAL ones, then anything left is FORBIDDEN and can be
+  // removed
+  void findForbiddenEdgesAndShrink(boolean verbose) {
+    int V = receivers.length;
+    int run = 1;
+
+    // increment cost af all edges already marked OPTIONAL (REQUIRED
+    // edges already incremented)
+    for (Vertex v : receivers) {
+      for (Edge e : v.edges) {
+        if (e.status == EdgeStatus.OPTIONAL) {
+          e.cost++;
+          if (e.cost == e.sender.minimumInCost+1) e.sender.dirty = true;
+        }
+      }
+    }
+
+    if (!verbose) System.out.print("Shrink (level 2) ");
+
+    // because the costs of REQUIRED/OPTIONAL edges are bumped,
+    // each new solution will contain as many previously UNKNOWN
+    // edges as possible.  Mark these new edges as OPTIONAL.
+    // Stop when no new edges are found.
+    for (int newEdges = 999; newEdges > 0; run++) {
+      findBestMatches();
+      newEdges = 0;
+      HashSet<Edge> edgeSet = new HashSet<Edge>(V);
+      for (Vertex v : receivers) {
+        Edge e = v.edgeMap.get(v.match);
+        if (e.status == EdgeStatus.UNKNOWN) {
+          e.status = EdgeStatus.OPTIONAL;
+          e.cost++;
+          if (e.cost == e.sender.minimumInCost+1) e.sender.dirty = true;
+          newEdges++;
+        }
+      }
+      reportStatsOrDot("Shrink 2."+run, verbose);
+    }
+
+    // When no new odges are found, everything that is currently UNKNOWN
+    // is actually FORBIDDEN, so remove them.
+    for (Vertex v : receivers) removeEdges(v, EdgeStatus.UNKNOWN);
+    for (Vertex v : senders) removeEdges(v, EdgeStatus.UNKNOWN);
+
+    if (verbose) reportStats("Shrink level 2 complete", verbose);
+    else System.out.println();
+  }
+
+  void markEdgesForbiddenIfNotRequired(Vertex v) {
+    for (Edge e : v.edges) {
+      assert e.status != EdgeStatus.OPTIONAL;
+      if (e.status != EdgeStatus.REQUIRED) e.status = EdgeStatus.FORBIDDEN;
+    }
+  }
+
+  void removeEdges(Vertex v, EdgeStatus statusToRemove) {
+    int numToKeep = 0;
+    for (Edge e : v.edges) {
+      if (e.status == statusToRemove) {
+        e.sender.dirty = true;
+      }
+      else {
+        v.edges[numToKeep++] = e;
+      }
+    }
+    v.edges = Arrays.copyOf(v.edges, numToKeep);
+  }
+
+  void reportStatsOrDot(String name, boolean verbose) {
+    if (verbose) reportStats(name, verbose);
+    else System.out.print(".");
+  }
+
+  void reportStats(String name, boolean verbose) {
+    if (!verbose) return;
+
+    int[] histogram = new int[3];
+    int edgeCount = 0;
+    for (Vertex v : receivers) {
+      for (Edge e : v.edges) {
+        histogram[e.status.ordinal()]++;
+        edgeCount++;
+      }
+    }
+
+    System.out.println(name +
+      ": V=" + receivers.length +
+      " E=" + edgeCount +
+      " REQUIRED=" + histogram[1] +
+      " OPTIONAL=" + histogram[2] +
+      " UNKNOWN=" + histogram[0]);
+  }
+
+  ////////////////////////////////////////////////////////////////
+
+  // DEBUGGING CODE
+  void sanityCheck() {
+    System.out.println("SANITY CHECK");
+    assert(receivers.length == senders.length);
+    int rcount = 0, scount = 0;
+    for (Vertex v : receivers) rcount += v.edges.length;
+    for (Vertex v : senders) scount += v.edges.length;
+    if (rcount != scount) System.out.println("rcount=" + rcount +" scount="+scount);
+    assert(rcount == scount);
+    for (Vertex v : receivers) {
+      for (Edge e : v.edges) assert(search(e, e.sender.edges));
+    }
+    for (Vertex v : senders) {
+      for (Edge e : v.edges) assert(search(e, e.receiver.edges));
+      assert(v.dirty || v.minimumInCost == calcMinCost(v.edges));
+    }
+  }
+  boolean search(Edge edge, Edge[] edges) {
+    for (Edge e : edges) if (e == edge) return true;
+    return false;
+  }
+  long calcMinCost(Edge[] edges) {
+    long min = Long.MAX_VALUE;
+    for (Edge e : edges) min = Math.min(e.cost, min);
+    return min;
+  }
 } // end Graph

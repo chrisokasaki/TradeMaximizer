@@ -10,7 +10,7 @@ import java.text.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
 
-  final String version = "Version 1.3c";
+  final String version = "Version 1.3c (dev)";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -42,7 +42,8 @@ public class TradeMaximizer {
     }
 
     long startTime = System.currentTimeMillis();
-    graph.removeImpossibleEdges();
+    graph.shrink(shrinkLevel, shrinkVerbose);
+
     List<List<Graph.Vertex>> bestCycles = graph.findCycles();
     int bestSumSquares = sumOfSquares(bestCycles);
     if (iterations > 1) {
@@ -108,6 +109,8 @@ public class TradeMaximizer {
   long nonTradeCost = 1000000000L; // 1 billion
 
   int iterations = 1;
+  int shrinkLevel = 0;
+  boolean shrinkVerbose = false;
 
   //////////////////////////////////////////////////////////////////////
 
@@ -167,7 +170,7 @@ public class TradeMaximizer {
             else if (option.equals("SQUARE-PRIORITIES"))
               priorityScheme = SQUARE_PRIORITIES;
             else if (option.equals("SCALED-PRIORITIES")) {
-              fatalError("SCALED-PRIORITIES no longer supported!");
+              fatalError("SCALED-PRIORITIES no longer supported!",lineNumber);
             }
             else if (option.equals("EXPLICIT-PRIORITIES"))
               priorityScheme = EXPLICIT_PRIORITIES;
@@ -202,6 +205,16 @@ public class TradeMaximizer {
               if (!num.matches("[1-9]\\d*"))
                 fatalError("SEED argument must be a positive integer",lineNumber);
               graph.setSeed(Long.parseLong(num));
+            }
+            else if (option.startsWith("SHRINK=")) {
+              String num = option.substring(7);
+              if (!num.matches("[0-9]")) {
+                fatalError("SHRINK argument must be a single digit",lineNumber);
+              }
+              shrinkLevel = Integer.parseInt(num);
+            }
+            else if (option.equals("SHRINK-VERBOSE")) {
+              shrinkVerbose = true;
             }
             else
               fatalError("Unknown option \""+option+"\"",lineNumber);

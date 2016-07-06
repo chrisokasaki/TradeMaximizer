@@ -136,7 +136,7 @@ All priority schemes begin by finding the rank of each wanted item in a want lis
 - In `LINEAR-PRIORITIES`, cost = rank.
 - In `TRIANGLE-PRIORITIES`, cost = 1+2+...+rank = rank*(rank+1)/2.
 - In `SQUARE-PRIORITIES`, cost = rank\*rank.
-- In `SCALED-PRIORITIES`, cost = 1 + (rank-1)\*2520/number of wants.
+- In `SCALED-PRIORITIES`, cost = 1 + (rank-1)\*2520/number of wants. **(`SCALED-PRIORITIES` removed as of Version 1.3c)**
 
 In the simplest case, rank is equal to the position of the item in the list. In other words, the first wanted item has rank 1, the second wanted item has rank 2, and so on.
 
@@ -213,7 +213,7 @@ Here are the options supported by TradeMaximizer:
 - `LINEAR-PRIORITIES`: Use the 1,2,3,4,... priority scheme.
 - `TRIANGLE-PRIORITIES`: Use the 1,3,6,10,... priority scheme.
 - `SQUARE-PRIORITIES`: Use the 1,4,9,16,... priority scheme.
-- `SCALED-PRIORITIES`: Use the scaled priority scheme, in which priorities are normalized into the range 1..2521.  If you are using this option, then you should also use `BIG-STEP=0`.
+- `SCALED-PRIORITIES`: Use the scaled priority scheme, in which priorities are normalized into the range 1..2521.  If you are using this option, then you should also use `BIG-STEP=0`.  **(`SCALED-PRIORITIES` removed as of Version 1.3c)**
 - `EXPLICIT-PRIORITIES`: Allow the user to annotate each wanted item with an explicit priority.  The annotated item is written <tt><i>itemname</i>=<i>priority</i></tt>.  If the annotation is missing, then the priority of the current item advances over the priority of the previous item as in linear priorities. For example, in the want list `A : B=15 C D=193` the three wanted items have priorities 15, 16, and 193 respectively.
 - <tt>SMALL-STEP=<i>num</i></tt>: Adjust how priorities change between successive entries in a want list.  (The default value is 1.)
 - <tt>BIG-STEP=<i>num</i></tt>: Adjust how priorities change for each semicolon in a want list.  (The default value is 9.)
@@ -237,6 +237,9 @@ Here are the options supported by TradeMaximizer:
 - `CASE-SENSITIVE`: Treat item names as case-sensitive instead of converting all lowercase letters to uppercase.
 
 - <tt>NONTRADE-COST=<i>num</i></tt>: Adjust the cost of not trading an item from its default value of 1 billion to <tt><i>num</i></tt>. The net effect is to forbid trade loops whose average cost per item exceeds <tt><i>num</i></tt>. _Note that this means that you can end up with less than the maximum number of trades._
+
+- <tt>SHRINK=<i>digit</i></tt>: Control how aggressively useless wants are pruned (where useless means _cannot possibly be used in any optimal trade_.  The default is 0, which removes edges that are not part of any cycle.  This is fast and reasonably effective.  Level 1 is much more aggressive and very effective, but slow.  Level 2 is a bit more effective and a little slower than level 1. **Note that level 1 and above only make sense in conjunction with `ITERATIONS`.  After shrinking, those iterations will be much, much faster, hopefully paying for the up-front cost of shrinking.**  (Levels 3-9 currently are equivalent to level 2.)
+- <tt>SHRINK-VERBOSE</tt>: Display statistics when shrinking.
 
 ## Official Names
 
