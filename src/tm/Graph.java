@@ -18,8 +18,9 @@ public class Graph {
       this.type = type;
     }
 
-    List<Edge> edges = new ArrayList<Edge>();
-    Edge[] EDGES;
+    private HashMap<Vertex,Edge> edgeMap = new HashMap<Vertex,Edge>();
+    private List<Edge> edgeList = new ArrayList<Edge>(); // used while building, null when frozen
+    Edge[] edges; //not valid until the graph is frozen
 
     // internal data for graph algorithms
     private long minimumInCost = Long.MAX_VALUE; // only kept in the senders
@@ -62,11 +63,11 @@ public class Graph {
     assert !frozen;
     assert getVertex(name) == null;
     Vertex receiver = new Vertex(name,user,isDummy,VertexType.RECEIVER);
-    receivers.add(receiver);
+    receiverList.add(receiver);
     nameMap.put(name,receiver);
 
     Vertex sender = new Vertex(name+" sender",user,isDummy,VertexType.SENDER);
-    senders.add(sender);
+    senderList.add(sender);
     receiver.twin = sender;
     sender.twin = receiver;
 
@@ -76,17 +77,16 @@ public class Graph {
   public Edge addEdge(Vertex receiver,Vertex sender,long cost) {
     assert !frozen;
     Edge edge = new Edge(receiver,sender,cost);
-    receiver.edges.add(edge);
-    sender.edges.add(edge);
+    receiver.edgeMap.put(sender,edge);
+    sender.edgeMap.put(receiver,edge);
+    receiver.edgeList.add(edge);
+    sender.edgeList.add(edge);
     sender.minimumInCost = Math.min(cost,sender.minimumInCost);
     return edge;
   }
 
   public Edge getEdge(Vertex receiver,Vertex sender) {
-    for (Edge edge : receiver.edges) {
-      if (edge.sender == sender) return edge;
-    }
-    return null;
+    return receiver.edgeMap.get(sender);
   }
 
   boolean frozen = false;
@@ -94,19 +94,30 @@ public class Graph {
   void freeze() {
     assert !frozen;
 
-    RECEIVERS = receivers.toArray(new Vertex[0]);
-    SENDERS = senders.toArray(new Vertex[0]);
+    receivers = receiverList.toArray(new Vertex[0]);
+    senders = senderList.toArray(new Vertex[0]);
+    receiverList = null;
+    senderList = null;
+
     Edge[] tmp = new Edge[0];
-    for (Vertex v : RECEIVERS) v.EDGES = v.edges.toArray(tmp);
-    for (Vertex v : SENDERS) v.EDGES = v.edges.toArray(tmp);
+    for (Vertex v : receivers) {
+      v.edges = v.edgeList.toArray(tmp);
+      v.edgeList = null;
+    }
+    for (Vertex v : senders) {
+      v.edges = v.edgeList.toArray(tmp);
+      v.edgeList = null;
+    }
 
     frozen = true;
   }
 
-  List<Vertex> receivers = new ArrayList<Vertex>();
-  List<Vertex> senders   = new ArrayList<Vertex>();
-  Vertex[] RECEIVERS;
-  Vertex[] SENDERS;
+  // receiverList/senderList are only valid while building the graph, null when frozen
+  // receivers/senders only valid once the graph is frozen
+  List<Vertex> receiverList = new ArrayList<Vertex>();
+  List<Vertex> senderList   = new ArrayList<Vertex>();
+  Vertex[] receivers;
+  Vertex[] senders;
 
   List<Vertex> orphans = new ArrayList<Vertex>();
 
@@ -114,9 +125,9 @@ public class Graph {
 
   void print() {
     assert frozen;
-    for (Vertex v : RECEIVERS) {
+    for (Vertex v : receivers) {
       System.out.print(v.name + " :");
-      for (Edge e : v.EDGES) {
+      for (Edge e : v.edges) {
         if (e.sender != e.receiver.twin)
           System.out.print(" " + e.sender.name);
       }
@@ -133,7 +144,7 @@ public class Graph {
   void visitReceivers(Vertex receiver) {
     assert receiver.type == VertexType.RECEIVER;
     receiver.mark = timestamp;
-    for (Edge edge : receiver.EDGES) {
+    for (Edge edge : receiver.edges) {
       Vertex v = edge.sender.twin;
       if (v.mark != timestamp) visitReceivers(v);
     }
@@ -142,38 +153,30 @@ public class Graph {
   void visitSenders(Vertex sender) {
     assert sender.type == VertexType.SENDER;
     sender.mark = timestamp;
-    for (Edge edge : sender.EDGES) {
+    for (Edge edge : sender.edges) {
       Vertex v = edge.receiver.twin;
       if (v.mark != timestamp) visitSenders(v);
     }
     sender.component = sender.twin.component = component;
   }
 
-  Edge[] removeBadEdges(Edge[] edges) {
+  void removeBadEdges(Vertex v) {
     int goodCount = 0;
-    for (Edge edge : edges) {
+    for (Edge edge : v.edges) {
       if (edge.receiver.component == edge.sender.component)
-        goodCount++;
+        v.edges[goodCount++] = edge;
     }
-    if (goodCount == edges.length) return edges;
-    Edge[] goodEdges = new Edge[goodCount];
-
-    goodCount = 0;
-    for (Edge edge : edges) {
-      if (edge.receiver.component == edge.sender.component)
-        goodEdges[goodCount++] = edge;
-    }
-    return goodEdges;
+    v.edges = Arrays.copyOf(v.edges, goodCount);
   }
 
   void removeImpossibleEdges() {
     assert frozen;
 
     advanceTimestamp();
-    finished = new ArrayList<Vertex>(RECEIVERS.length);
+    finished = new ArrayList<Vertex>(receivers.length);
 
     // run strongly connected components and label all the components
-    for (Vertex v : RECEIVERS)
+    for (Vertex v : receivers)
       if (v.mark != timestamp) visitReceivers(v);
     Collections.reverse(finished);
     for (Vertex v : finished) {
@@ -184,45 +187,43 @@ public class Graph {
     }
 
     // now remove all edges between two different components
-    for (Vertex v : RECEIVERS) {
-      v.EDGES = removeBadEdges(v.EDGES);
-    }
-    for (Vertex v : SENDERS) {
-      v.EDGES = removeBadEdges(v.EDGES);
+    for (Vertex v : receivers) removeBadEdges(v);
+    for (Vertex v : senders) {
+      removeBadEdges(v);
 
-      long save = v.minimumInCost;
       v.minimumInCost = Long.MAX_VALUE;
-      for (Edge edge : v.EDGES)
+      for (Edge edge : v.edges)
         v.minimumInCost = Math.min(edge.cost,v.minimumInCost);
     }
 
     removeOrphans();
   }
 
+  // remove all vertices whose only edge is the self (nontrade) edge
+  // MUST ONLY BE CALLED AFTER SCC, SO THAT THE SENDER AND RECEIVER OF THE ORPHAN
+  // WILL **BOTH** ONLY HAVE A SINGLE EDGE
   void removeOrphans() {
-    int goodCount = 0;
-    for (Vertex v : RECEIVERS) {
-      if (v.EDGES.length > 1) goodCount++;
+    int rCount = 0;
+    for (Vertex v : receivers) {
+      if (v.edges.length > 1 || v.edges[0].sender != v.twin) {
+        receivers[rCount++] = v;
+      }
       else {
-        assert v.EDGES.length == 1;
-        assert v.EDGES[0].sender == v.twin;
+        assert v.edges.length == 1;
         orphans.add(v);
       }
     }
-    if (goodCount == RECEIVERS.length) return;
+    if (rCount == receivers.length) return;
+    receivers = Arrays.copyOf(receivers, rCount);
 
-    Vertex[] receivers = new Vertex[goodCount];
-    goodCount = 0;
-    for (Vertex v : RECEIVERS) {
-      if (v.EDGES.length > 1) receivers[goodCount++] = v;
+    int sCount = 0;
+    for (Vertex v : senders) {
+      if (v.edges.length > 1 || v.edges[0].receiver != v.twin) {
+        senders[sCount++] = v;
+      }
     }
-    RECEIVERS = receivers;
-    Vertex[] senders = new Vertex[goodCount];
-    goodCount = 0;
-    for (Vertex v : SENDERS) {
-      if (v.EDGES.length > 1) senders[goodCount++] = v;
-    }
-    SENDERS = senders;
+    senders = Arrays.copyOf(senders, sCount);
+    assert rCount == sCount;
   }
 
   //////////////////////////////////////////////////////////////////////
@@ -237,11 +238,11 @@ public class Graph {
     sinkCost = Long.MAX_VALUE;
 
     Heap heap = new Heap();
-    for (Vertex v : SENDERS) {
+    for (Vertex v : senders) {
       v.from = null;
       v.heapEntry = heap.insert(v, INFINITY);
     }
-    for (Vertex v : RECEIVERS) {
+    for (Vertex v : receivers) {
       v.from = null;
       long cost = v.match == null ? 0 : INFINITY;
       v.heapEntry = heap.insert(v, cost);
@@ -253,7 +254,7 @@ public class Graph {
       long cost = minEntry.cost();
       if (cost == INFINITY) break; // everything left is unreachable
       if (vertex.type == VertexType.RECEIVER) {
-        for (Edge e : vertex.EDGES) {
+        for (Edge e : vertex.edges) {
           Vertex other = e.sender;
           if (other == vertex.match) continue;
           long c = vertex.price + e.cost - other.price;
@@ -282,19 +283,19 @@ public class Graph {
     }
   } // end dijkstra
 
-  List<List<Vertex>> findCycles() {
+  void findBestMatches() {
     assert frozen;
 
-    for (Vertex v : RECEIVERS) {
+    for (Vertex v : receivers) {
       v.match = null;
       v.price = 0;
     }
-    for (Vertex v : SENDERS) {
+    for (Vertex v : senders) {
       v.match = null;
       v.price = v.minimumInCost;
     }
 
-    for (int round = 0; round < RECEIVERS.length; round++) {
+    for (int round = 0; round < receivers.length; round++) {
       dijkstra();
 
       // update the matching
@@ -311,7 +312,7 @@ public class Graph {
         receiver.match = sender;
 
         // update matchCost
-        for (Edge e : receiver.EDGES) {
+        for (Edge e : receiver.edges) {
           if (e.sender == sender) {
             receiver.matchCost = e.cost;
             break;
@@ -322,15 +323,18 @@ public class Graph {
       }
 
       // update the prices
-      for (Vertex v : RECEIVERS) v.price += v.heapEntry.cost();
-      for (Vertex v : SENDERS)   v.price += v.heapEntry.cost();
+      for (Vertex v : receivers) v.price += v.heapEntry.cost();
+      for (Vertex v : senders)   v.price += v.heapEntry.cost();
     }
+  }
 
+  List<List<Vertex>> findCycles() {
+    findBestMatches();
     elideDummies();
     advanceTimestamp();
     List<List<Vertex>> cycles = new ArrayList<List<Vertex>>();
 
-    for (Vertex vertex : RECEIVERS) {
+    for (Vertex vertex : receivers) {
       if (vertex.mark == timestamp || vertex.match == vertex.twin) continue;
 
       List<Vertex> cycle = new ArrayList<Vertex>();
@@ -361,16 +365,12 @@ public class Graph {
   }
 
   void shuffle() {
-    shuffle(RECEIVERS);
-    for (Vertex v : RECEIVERS) shuffle(v.EDGES);
-
-    // shuffle senders also?
-    //  for (int i = 0; i < RECEIVERS.length; i++) SENDERS[i] = RECEIVERS[i].twin;
-    //  for (Vertex v : SENDERS) shuffle(v.EDGES);
+    shuffle(receivers);
+    for (Vertex v : receivers) shuffle(v.edges);
   }
 
   void elideDummies() {
-    for (Vertex v : RECEIVERS) {
+    for (Vertex v : receivers) {
       while (v.match.isDummy && v.match != v.twin) {
         Vertex dummySender = v.match;
         Vertex nextSender = dummySender.twin.match;
@@ -383,20 +383,20 @@ public class Graph {
   }
 
   void saveMatches() {
-    for (Vertex v : RECEIVERS) {
+    for (Vertex v : receivers) {
       v.savedMatch = v.match;
       v.savedMatchCost = v.matchCost;
     }
-    for (Vertex v : SENDERS) {
+    for (Vertex v : senders) {
       v.savedMatch = v.match;
     }
   }
   void restoreMatches() {
-    for (Vertex v : RECEIVERS) {
+    for (Vertex v : receivers) {
       v.match = v.savedMatch;
       v.matchCost = v.savedMatchCost;
     }
-    for (Vertex v : SENDERS) {
+    for (Vertex v : senders) {
       v.match = v.savedMatch;
     }
   }

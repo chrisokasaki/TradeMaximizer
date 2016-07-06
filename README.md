@@ -1,6 +1,6 @@
 # TradeMaximizer
 
-Version 1.3b  
+Version 1.3c (dev)
 Created by Chris Okasaki
 
 ## Contents

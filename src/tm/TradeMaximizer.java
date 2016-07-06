@@ -1,6 +1,5 @@
 // TradeMaximizer.java
 // Created by Chris Okasaki
-// Version 1.3b
 
 package tm;
 import java.io.*;
@@ -11,7 +10,7 @@ import java.text.*;
 public class TradeMaximizer {
   public static void main(String[] args) { new TradeMaximizer().run(); }
 
-  final String version = "Version 1.3b";
+  final String version = "Version 1.3c";
 
   void run() {
     System.out.println("TradeMaximizer " + version);
@@ -100,7 +99,7 @@ public class TradeMaximizer {
   static final int LINEAR_PRIORITIES = 1;
   static final int TRIANGLE_PRIORITIES = 2;
   static final int SQUARE_PRIORITIES = 3;
-  static final int SCALED_PRIORITIES = 4;
+  static final int SCALED_PRIORITIES = 4; // no longer supported!!
   static final int EXPLICIT_PRIORITIES = 5;
 
   int priorityScheme = NO_PRIORITIES;
@@ -168,12 +167,7 @@ public class TradeMaximizer {
             else if (option.equals("SQUARE-PRIORITIES"))
               priorityScheme = SQUARE_PRIORITIES;
             else if (option.equals("SCALED-PRIORITIES")) {
-              priorityScheme = SCALED_PRIORITIES;
-              if (bigStepFlag && bigStep != 0)
-                fatalError("Do not set BIG-STEP when using SCALED-PRIORITIES",lineNumber);
-              if (smallStepFlag && smallStep != 1)
-                fatalError("Do not set SMALL-STEP when using SCALED-PRIORITIES",lineNumber);
-              bigStep = 0;
+              fatalError("SCALED-PRIORITIES no longer supported!");
             }
             else if (option.equals("EXPLICIT-PRIORITIES"))
               priorityScheme = EXPLICIT_PRIORITIES;
@@ -182,8 +176,6 @@ public class TradeMaximizer {
               if (!num.matches("\\d+"))
                 fatalError("SMALL-STEP argument must be a non-negative integer",lineNumber);
               smallStep = Integer.parseInt(num);
-              if (priorityScheme == SCALED_PRIORITIES && smallStep != 1)
-                fatalError("Do not set SMALL-STEP when using SCALED-PRIORITIES",lineNumber);
               smallStepFlag = true;
             }
             else if (option.startsWith("BIG-STEP=")) {
@@ -191,8 +183,6 @@ public class TradeMaximizer {
               if (!num.matches("\\d+"))
                 fatalError("BIG-STEP argument must be a non-negative integer",lineNumber);
               bigStep = Integer.parseInt(num);
-              if (priorityScheme == SCALED_PRIORITIES && bigStep != 0)
-                fatalError("Do not set BIG-STEP when using SCALED-PRIORITIES",lineNumber);
               bigStepFlag = true;
             }
             else if (option.startsWith("NONTRADE-COST=")) {
@@ -342,7 +332,6 @@ public class TradeMaximizer {
   List< String > errors = new ArrayList< String >();
 
   final long INFINITY = 100000000000000L; // 10^14
-  // final long NOTRADE  = 1000000000L; // replaced by nonTradeCost
   final long UNIT     = 1L;
 
   int ITEMS; // the number of items being traded (including dummy items)
@@ -480,7 +469,6 @@ public class TradeMaximizer {
             case LINEAR_PRIORITIES:   cost = rank; break;
             case TRIANGLE_PRIORITIES: cost = rank*(rank+1)/2; break;
             case SQUARE_PRIORITIES:   cost = rank*rank; break;
-            case SCALED_PRIORITIES:   cost = rank; break; // assign later
             case EXPLICIT_PRIORITIES: cost = rank; break;
           }
 
@@ -490,20 +478,6 @@ public class TradeMaximizer {
           graph.addEdge(fromVertex,toVertex,cost);
 
           rank += smallStep;
-        }
-      }
-
-      // update costs for those priority schemes that need information such as
-      // number of wants
-      if (!fromVertex.isDummy) {
-        switch (priorityScheme) {
-          case SCALED_PRIORITIES:
-            int n = fromVertex.edges.size()-1;
-            for (Graph.Edge edge : fromVertex.edges) {
-              if (edge.sender != fromVertex.twin)
-                edge.cost = 1 + (edge.cost-1)*2520/n;
-            }
-            break;
         }
       }
     }
@@ -551,7 +525,7 @@ public class TradeMaximizer {
       loops.add("");
     }
     if (showNonTrades) {
-      for (Graph.Vertex v : graph.RECEIVERS) {
+      for (Graph.Vertex v : graph.receivers) {
         if (v.match == v.twin && !v.isDummy)
           summary.add(pad(show(v)) + "             does not trade");
       }
