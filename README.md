@@ -222,7 +222,7 @@ Here are the options supported by TradeMaximizer:
 - `REQUIRE-COLONS`: Make colons mandatory for every want list.
 - `REQUIRE-USERNAMES`: Make usernames mandatory for every want list.
 
-- <tt>ITERATIONS=<i>num</i></tt>: If set to a number larger than 1, then use randomization to find <i>num</i> different solutions, keeping the solution with the best sum-of-squares metric.  Note that all of the solutions will have the same number of trades and the same total cost.  (The default value is 1.)
+- <tt>ITERATIONS=<i>num</i></tt>: If set to a number larger than 1, then use randomization to find <i>num</i> different solutions, keeping the solution with the best sum-of-squares metric.  Note that all of the solutions will have the same number of trades and the same total cost.  (The default value is 1.) **Note that ITERATIONS performed after SHRINK=2 can use a much, much faster algorithm, so if you are using SHRINK=2, then feel free to use a very large number of ITERATIONS, such as 10,000.**
 - <tt>SEED=<i>num</i></tt>: Sets the seed for the random number generator to <tt><i>num</i></tt>, so that the results will be repeatable.  Only useful if `ITERATIONS` is set to a value greater than 1.
 
 - `SHOW-MISSING`: Show items that appear in the [official names section](#official-names), but that do not have want lists.  (Ignored if there are no official names.)
@@ -239,7 +239,8 @@ Here are the options supported by TradeMaximizer:
 - <tt>NONTRADE-COST=<i>num</i></tt>: Adjust the cost of not trading an item from its default value of 1 billion to <tt><i>num</i></tt>. The net effect is to forbid trade loops whose average cost per item exceeds <tt><i>num</i></tt>. _Note that this means that you can end up with less than the maximum number of trades._
 
 - <tt>SHRINK=<i>digit</i></tt>: Control how aggressively useless wants are pruned (where useless means _cannot possibly be used in any optimal trade_.  The default is 0, which removes edges that are not part of any cycle.  This is fast and reasonably effective.  Level 1 is much more aggressive and very effective, but slow.  Level 2 is a bit more effective and a little slower than level 1. **Note that level 1 and above only make sense in conjunction with `ITERATIONS`.  After shrinking, those iterations will be much, much faster, hopefully paying for the up-front cost of shrinking.**  (Levels 3-9 currently are equivalent to level 2.)
-- <tt>SHRINK-VERBOSE</tt>: Display statistics when shrinking.
+- `SHRINK-VERBOSE`: Display statistics when shrinking.
+- `SHOW-WANTS`: Prints the current version of the want lists in standard want-list format. Mostly useful after shrinking. Two important caveats: (1) it does not echo all of the options from the original want list and (2) when the new want lists are read back in, any self-edges that had been pruned away will be restored, so you would still need to shrink again to remove those self-edges.
 
 ## Official Names
 

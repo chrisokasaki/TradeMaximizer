@@ -69,7 +69,7 @@ public class Graph {
     receiverList.add(receiver);
     nameMap.put(name,receiver);
 
-    Vertex sender = new Vertex(name+" sender",user,isDummy,VertexType.SENDER);
+    Vertex sender = new Vertex(name,user,isDummy,VertexType.SENDER);
     senderList.add(sender);
     receiver.twin = sender;
     sender.twin = receiver;
@@ -124,18 +124,6 @@ public class Graph {
   List<Vertex> orphans = new ArrayList<Vertex>();
 
   private HashMap<String,Vertex> nameMap = new HashMap<String,Vertex>();
-
-  void print() {
-    assert frozen;
-    for (Vertex v : receivers) {
-      System.out.print(v.name + " :");
-      for (Edge e : v.edges) {
-        if (e.sender != e.receiver.twin)
-          System.out.print(" " + e.sender.name);
-      }
-      System.out.println();
-    }
-  }
 
   private int timestamp = 0;
   private void advanceTimestamp() { timestamp++; }
@@ -285,6 +273,11 @@ public class Graph {
   void findBestMatches() {
     assert frozen;
 
+    if (hasBeenFullyShrunk) {
+      findUnweightedMatches();
+      return;
+    }
+
     for (Vertex v : receivers) {
       v.match = null;
       v.price = 0;
@@ -408,15 +401,18 @@ public class Graph {
 
   /////////////////////////////////////////////////////////////////
 
+  boolean hasBeenFullyShrunk = false;
+
   void shrink(int level, boolean verbose) {
     assert level >= 0;
 
-    long startTime = System.currentTimeMillis();
     reportStats("Original", verbose);
 
     removeImpossibleEdgesAndOrphans();
     reportStats("Shrink 0 (SCC)", verbose);
     if (level == 0) return;
+
+    long startTime = System.currentTimeMillis();
 
     int factor = receivers.length+1;
 
@@ -424,13 +420,14 @@ public class Graph {
     findRequiredEdgesAndShrink(verbose);
     removeImpossibleEdgesAndOrphans();
     reportStats("Shrink 1 (SCC)", verbose);
-    if (verbose) System.out.println("elapsed time = " + (System.currentTimeMillis() - startTime) + "ms");
+    if (verbose) System.out.println("Shrink 1 time = " + (System.currentTimeMillis() - startTime) + "ms");
 
     if (level > 1) {
       findForbiddenEdgesAndShrink(verbose);
       removeImpossibleEdgesAndOrphans();
       reportStats("Shrink 2 (SCC)", verbose);
-      if (verbose) System.out.println("elapsed time = " + (System.currentTimeMillis() - startTime) + "ms");
+      if (verbose) System.out.println("Shrink 2 time = " + (System.currentTimeMillis() - startTime) + "ms");
+      hasBeenFullyShrunk = true;
     }
     scaleDownEdgeCosts(factor);
   }
@@ -633,6 +630,72 @@ public class Graph {
       " REQUIRED=" + histogram[1] +
       " OPTIONAL=" + histogram[2] +
       " UNKNOWN=" + histogram[0]);
+  }
+
+  /////////////////////////////////////////////////////////////////
+
+  // simplified Ford-Fulkerson to find a perfect bipartite matching
+  // under the assumption that a perfect matching exists
+  // ignores weights!
+  void findUnweightedMatches() {
+    assert frozen;
+
+    for (Vertex v : receivers) v.match = null;
+    for (Vertex v : senders) {
+      v.match = null;
+      v.price = 0;  // hack: use the price fields to track "visited" in the dfs
+    }
+
+    // make some stacks for the dfs
+    int n = receivers.length;
+    Vertex[] receiverStack = new Vertex[n];
+    int[] indexStack = new int[n];
+    Vertex[] senderStack= new Vertex[n];
+    int time = 0;
+
+    for (Vertex v : receivers) {
+      time++; // a vertex has been visited if its price == time
+
+      // do an iterative dfs to find an augmenting path from v to
+      // an unused sender
+      int pos = 0;
+      receiverStack[pos] = v;
+      indexStack[pos] = 0;
+      v.price = time;
+
+      while (true) {
+        Vertex receiver = receiverStack[pos];
+        int i = indexStack[pos]++;
+        if (i == receiver.edges.length) { // backtrack
+          pos--;
+        }
+        else {
+          Vertex sender = receiver.edges[i].sender;
+          if (sender.price == time) continue; // already visited, skip it
+
+          senderStack[pos] = sender;
+          if (sender.match == null) break; // found the augmenting path
+
+          sender.price = time; // mark as visited
+          receiverStack[++pos] = sender.match;
+          indexStack[pos] = 0;
+        }
+      }
+
+      // update the edges according to the augmenting path
+      for (int i = 0; i <= pos; i++) {
+        Vertex receiver = receiverStack[i];
+        Vertex sender = senderStack[i];
+        receiver.match = sender;
+        sender.match = receiver;
+      }
+    }
+
+    // update all the matchCosts
+    for (Vertex v : receivers) {
+      long matchCost = v.edgeMap.get(v.match).cost;
+      v.matchCost = v.match.matchCost = matchCost;
+    }
   }
 
   ////////////////////////////////////////////////////////////////

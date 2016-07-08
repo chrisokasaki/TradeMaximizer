@@ -43,6 +43,7 @@ public class TradeMaximizer {
 
     long startTime = System.currentTimeMillis();
     graph.shrink(shrinkLevel, shrinkVerbose);
+    if (showWants) printWants();
 
     List<List<Graph.Vertex>> bestCycles = graph.findCycles();
     int bestSumSquares = sumOfSquares(bestCycles);
@@ -66,6 +67,7 @@ public class TradeMaximizer {
           System.out.println(" ]");
         }
       }
+      System.out.println("Completed " + iterations + " iterations.");
       System.out.println();
       graph.restoreMatches();
     }
@@ -95,6 +97,7 @@ public class TradeMaximizer {
   boolean sortByItem = false;
   boolean allowDummies = false;
   boolean showElapsedTime = false;
+  boolean showWants = false;
 
   static final int NO_PRIORITIES = 0;
   static final int LINEAR_PRIORITIES = 1;
@@ -215,6 +218,9 @@ public class TradeMaximizer {
             }
             else if (option.equals("SHRINK-VERBOSE")) {
               shrinkVerbose = true;
+            }
+            else if (option.equals("SHOW-WANTS")) {
+              showWants = true;
             }
             else
               fatalError("Unknown option \""+option+"\"",lineNumber);
@@ -578,8 +584,6 @@ public class TradeMaximizer {
       for (int groupSize : groupSizes) System.out.print(" " + groupSize);
       System.out.println();
       System.out.println("Sum squares = " + sumOfSquares);
-
-//      System.out.println("Orphans     = " + graph.orphans.size());
     }
   }
 
@@ -587,6 +591,33 @@ public class TradeMaximizer {
   String pad(String name) {
     while (name.length() < width) name += " ";
     return name;
+  }
+
+  String nameOf(Graph.Vertex v) {
+    return v.name.split(" ")[0];
+  }
+  void printWants() {
+    // print out the new want lists after shrinking
+    // WARNING: If a node's self-edge has been removed, that information
+    // will not be recorded in the new want list.
+    if (nonTradeCost != 1000000000L)
+      System.out.println("#! NONTRADE-COST=" + nonTradeCost);
+    if (priorityScheme != NO_PRIORITIES)
+      System.out.println("#! EXPLICIT-PRIORITIES");
+    if (allowDummies)
+      System.out.println("#! ALLOW-DUMMIES");
+    for (Graph.Vertex v : graph.receivers) {
+      if (v.user != null) System.out.print(v.user + " ");
+      System.out.print(nameOf(v) + ":");
+      for (Graph.Edge e : v.edges) {
+        if (e.sender != v.twin) {
+          System.out.print(" " + nameOf(e.sender.twin));
+          if (priorityScheme != NO_PRIORITIES)
+            System.out.print("=" + e.cost);
+        }
+      }
+      System.out.println();
+    }
   }
 
 } // end TradeMaximizer
