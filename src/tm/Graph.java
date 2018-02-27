@@ -1,10 +1,21 @@
 package tm;
+import java.io.PrintStream;
 import java.util.*;
 
 public class Graph {
 
   static enum VertexType { RECEIVER, SENDER }
 
+  private PrintStream out;
+  
+  /**
+   * Injecting {@code output} via constructor.
+   * @param out
+   */
+  public Graph(PrintStream output) {
+    this.out = output;
+  }
+  
   public static class Vertex {
     String name;
     String user;
@@ -420,13 +431,13 @@ public class Graph {
     findRequiredEdgesAndShrink(verbose);
     removeImpossibleEdgesAndOrphans();
     reportStats("Shrink 1 (SCC)", verbose);
-    if (verbose) System.out.println("Shrink 1 time = " + (System.currentTimeMillis() - startTime) + "ms");
+    if (verbose) out.println("Shrink 1 time = " + (System.currentTimeMillis() - startTime) + "ms");
 
     if (level > 1) {
       findForbiddenEdgesAndShrink(verbose);
       removeImpossibleEdgesAndOrphans();
       reportStats("Shrink 2 (SCC)", verbose);
-      if (verbose) System.out.println("Shrink 2 time = " + (System.currentTimeMillis() - startTime) + "ms");
+      if (verbose) out.println("Shrink 2 time = " + (System.currentTimeMillis() - startTime) + "ms");
       hasBeenFullyShrunk = true;
     }
     scaleDownEdgeCosts(factor);
@@ -465,7 +476,7 @@ public class Graph {
     Edge[] requiredEdges = new Edge[numRequired];
     int run = 1;
 
-    if (!verbose) System.out.print("Shrink (level 1) ");
+    if (!verbose) out.print("Shrink (level 1) ");
 
     // Find initial solution. Temporaritly mark all chosen edges as REQUIRED
     // and bump their costs.
@@ -534,7 +545,7 @@ public class Graph {
     }
 
     if (verbose) reportStats("Shrink 1 complete", verbose);
-    else System.out.println();
+    else out.println();
   }
 
   // must be called *after* findRequiredEdgesAndShrink
@@ -556,7 +567,7 @@ public class Graph {
       }
     }
 
-    if (!verbose) System.out.print("Shrink (level 2) ");
+    if (!verbose) out.print("Shrink (level 2) ");
 
     // because the costs of REQUIRED/OPTIONAL edges are bumped,
     // each new solution will contain as many previously UNKNOWN
@@ -584,7 +595,7 @@ public class Graph {
     for (Vertex v : senders) removeEdges(v, EdgeStatus.UNKNOWN);
 
     if (verbose) reportStats("Shrink level 2 complete", verbose);
-    else System.out.println();
+    else out.println();
   }
 
   void markEdgesForbiddenIfNotRequired(Vertex v) {
@@ -609,7 +620,7 @@ public class Graph {
 
   void reportStatsOrDot(String name, boolean verbose) {
     if (verbose) reportStats(name, verbose);
-    else System.out.print(".");
+    else out.print(".");
   }
 
   void reportStats(String name, boolean verbose) {
@@ -624,7 +635,7 @@ public class Graph {
       }
     }
 
-    System.out.println(name +
+    out.println(name +
       ": V=" + receivers.length +
       " E=" + edgeCount +
       " REQUIRED=" + histogram[1] +
@@ -702,12 +713,12 @@ public class Graph {
 
   // DEBUGGING CODE
   void sanityCheck() {
-    System.out.println("SANITY CHECK");
+    out.println("SANITY CHECK");
     assert(receivers.length == senders.length);
     int rcount = 0, scount = 0;
     for (Vertex v : receivers) rcount += v.edges.length;
     for (Vertex v : senders) scount += v.edges.length;
-    if (rcount != scount) System.out.println("rcount=" + rcount +" scount="+scount);
+    if (rcount != scount) out.println("rcount=" + rcount +" scount="+scount);
     assert(rcount == scount);
     for (Vertex v : receivers) {
       for (Edge e : v.edges) assert(search(e, e.sender.edges));

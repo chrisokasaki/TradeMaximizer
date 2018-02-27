@@ -8,21 +8,38 @@ import java.text.*;
 
 
 public class TradeMaximizer {
-  public static void main(String[] args) { new TradeMaximizer().run(); }
+
+  private PrintStream out;
+  private InputStream input;
+  
+  public TradeMaximizer() {
+    this.out = System.out;
+    this.input = System.in;
+  }
+
+  public TradeMaximizer(InputStream input, OutputStream output) {
+    this.out = new PrintStream(output);
+    this.input = input;
+  }
+  
+  public static void main(String[] args) throws IOException {
+    TradeMaximizer mainInstance = new TradeMaximizer();
+    mainInstance.run();
+  }
 
   final String version = "Version 1.3c (dev)";
 
-  void run() {
-    System.out.println("TradeMaximizer " + version);
+  public void run() {
+    out.println("TradeMaximizer " + version);
 
     List< String[] > wantLists = readWantLists();
     if (wantLists == null) return;
     if (options.size() > 0) {
-      System.out.print("Options:");
-      for (String option : options) System.out.print(" "+option);
-      System.out.println();
+      out.print("Options:");
+      for (String option : options) out.print(" "+option);
+      out.println();
     }
-    System.out.println();
+    out.println();
 
     buildGraph(wantLists);
     if (showMissing && officialNames != null && officialNames.size() > 0) {
@@ -30,15 +47,15 @@ public class TradeMaximizer {
       List<String> missing = new ArrayList<String>(officialNames);
       Collections.sort(missing);
       for (String name : missing) {
-        System.out.println("**** Missing want list for official name " +name);
+        out.println("**** Missing want list for official name " +name);
       }
-      System.out.println();
+      out.println();
     }
     if (showErrors && errors.size() > 0) {
       Collections.sort(errors);
-      System.out.println("ERRORS:");
-      for (String error : errors) System.out.println(error);
-      System.out.println();
+      out.println("ERRORS:");
+      for (String error : errors) out.println(error);
+      out.println();
     }
 
     long startTime = System.currentTimeMillis();
@@ -61,21 +78,21 @@ public class TradeMaximizer {
           for (int j = 0; j < cycles.size(); j++)
             groups[j] = cycles.get(j).size();
           Arrays.sort(groups);
-          System.out.print("[ "+sumSquares + " :");
+          out.print("[ "+sumSquares + " :");
           for (int j = groups.length-1; j >= 0; j--)
-            System.out.print(" " + groups[j]);
-          System.out.println(" ]");
+            out.print(" " + groups[j]);
+          out.println(" ]");
         }
       }
-      System.out.println("Completed " + iterations + " iterations.");
-      System.out.println();
+      out.println("Completed " + iterations + " iterations.");
+      out.println();
       graph.restoreMatches();
     }
     long stopTime = System.currentTimeMillis();
     displayMatches(bestCycles);
 
     if (showElapsedTime)
-      System.out.println("Elapsed time = " + (stopTime-startTime) + "ms");
+      out.println("Elapsed time = " + (stopTime-startTime) + "ms");
   }
 
   int sumOfSquares(List<List<Graph.Vertex>> cycles) {
@@ -124,7 +141,7 @@ public class TradeMaximizer {
   List<String[]> readWantLists() {
     boolean bigStepFlag = false, smallStepFlag = false;
     try {
-      BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+      BufferedReader in = new BufferedReader(new InputStreamReader(input));
       List<String[]> wantLists = new ArrayList<String[]>();
       boolean readingOfficialNames = false;
 
@@ -336,8 +353,8 @@ public class TradeMaximizer {
   }
 
   void fatalError(String msg) {
-    System.out.println();
-    System.out.println("FATAL ERROR: " + msg);
+    out.println();
+    out.println("FATAL ERROR: " + msg);
     System.exit(1);
   }
   void fatalError(String msg,int lineNumber) {
@@ -346,7 +363,7 @@ public class TradeMaximizer {
 
   //////////////////////////////////////////////////////////////////////
 
-  Graph graph = new Graph();
+  Graph graph = new Graph(out);
 
   List< String > errors = new ArrayList< String >();
 
@@ -555,35 +572,35 @@ public class TradeMaximizer {
     }
 
     if (showLoops) {
-      System.out.println("TRADE LOOPS (" + numTrades + " total trades):");
-      System.out.println();
-      for (String item : loops) System.out.println(item);
+      out.println("TRADE LOOPS (" + numTrades + " total trades):");
+      out.println();
+      for (String item : loops) out.println(item);
     }
 
     if (showSummary) {
       Collections.sort(summary);
-      System.out.println("ITEM SUMMARY (" + numTrades + " total trades):");
-      System.out.println();
-      for (String item : summary) System.out.println(item);
-      System.out.println();
+      out.println("ITEM SUMMARY (" + numTrades + " total trades):");
+      out.println();
+      for (String item : summary) out.println(item);
+      out.println();
     }
 
 
-    System.out.print("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");
-    if (ITEMS-DUMMY_ITEMS == 0) System.out.println();
-    else System.out.println(new DecimalFormat(" (0.0%)").format(numTrades/(double)(ITEMS-DUMMY_ITEMS)));
+    out.print("Num trades  = " + numTrades + " of " + (ITEMS-DUMMY_ITEMS) + " items");
+    if (ITEMS-DUMMY_ITEMS == 0) out.println();
+    else out.println(new DecimalFormat(" (0.0%)").format(numTrades/(double)(ITEMS-DUMMY_ITEMS)));
 
     if (showStats) {
-      System.out.print("Total cost  = " + totalCost);
-      if (numTrades == 0) System.out.println();
-      else System.out.println(new DecimalFormat(" (avg 0.00)").format(totalCost/(double)numTrades));
-      System.out.println("Num groups  = " + numGroups);
-      System.out.print("Group sizes =");
+      out.print("Total cost  = " + totalCost);
+      if (numTrades == 0) out.println();
+      else out.println(new DecimalFormat(" (avg 0.00)").format(totalCost/(double)numTrades));
+      out.println("Num groups  = " + numGroups);
+      out.print("Group sizes =");
       Collections.sort(groupSizes);
       Collections.reverse(groupSizes);
-      for (int groupSize : groupSizes) System.out.print(" " + groupSize);
-      System.out.println();
-      System.out.println("Sum squares = " + sumOfSquares);
+      for (int groupSize : groupSizes) out.print(" " + groupSize);
+      out.println();
+      out.println("Sum squares = " + sumOfSquares);
     }
   }
 
@@ -601,22 +618,22 @@ public class TradeMaximizer {
     // WARNING: If a node's self-edge has been removed, that information
     // will not be recorded in the new want list.
     if (nonTradeCost != 1000000000L)
-      System.out.println("#! NONTRADE-COST=" + nonTradeCost);
+      out.println("#! NONTRADE-COST=" + nonTradeCost);
     if (priorityScheme != NO_PRIORITIES)
-      System.out.println("#! EXPLICIT-PRIORITIES");
+      out.println("#! EXPLICIT-PRIORITIES");
     if (allowDummies)
-      System.out.println("#! ALLOW-DUMMIES");
+      out.println("#! ALLOW-DUMMIES");
     for (Graph.Vertex v : graph.receivers) {
-      if (v.user != null) System.out.print(v.user + " ");
-      System.out.print(nameOf(v) + ":");
+      if (v.user != null) out.print(v.user + " ");
+      out.print(nameOf(v) + ":");
       for (Graph.Edge e : v.edges) {
         if (e.sender != v.twin) {
-          System.out.print(" " + nameOf(e.sender.twin));
+          out.print(" " + nameOf(e.sender.twin));
           if (priorityScheme != NO_PRIORITIES)
-            System.out.print("=" + e.cost);
+            out.print("=" + e.cost);
         }
       }
-      System.out.println();
+      out.println();
     }
   }
 
